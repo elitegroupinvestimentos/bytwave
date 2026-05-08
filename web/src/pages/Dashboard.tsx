@@ -30,25 +30,36 @@ export default function Dashboard() {
   const [strategyStatus, setStrategyStatus] = useState<'running' | 'paused' | 'stopped' | 'missing' | 'loading'>('loading');
   const [actionMsg, setActionMsg] = useState<{ type: 'error' | 'success' | 'info'; msg: string; cta?: { label: string; to: string } } | null>(null);
 
-  // Carrega as estratégias do user e usa a primeira como par ativo
+  // Carrega as estratégias do user e usa a mais recente como par ativo.
+  // Refazemos a cada 8s pra captar config recém-salva em outra aba.
   useEffect(() => {
     let alive = true;
-    api
-      .listStrategies(userId)
-      .then((list) => {
+    let firstLoad = true;
+    const refresh = async () => {
+      try {
+        const list = await api.listStrategies(userId);
         if (!alive) return;
         const symbols = list.map((s) => s.symbol);
         setAvailableSymbols(symbols);
-        if (symbols.length > 0 && !symbols.includes(symbol)) {
-          // Prefere a que está running, senão a primeira (mais recente)
+        if (symbols.length === 0) return;
+        // Na 1ª carga, sempre pula pra running (ou a mais recente).
+        // Em refreshes seguintes, mantém a seleção do usuário se ainda válida.
+        if (firstLoad || !symbols.includes(symbol)) {
           const running = list.find((s) => s.status === 'running');
           setSymbol(running?.symbol ?? symbols[0]);
+          firstLoad = false;
         }
-      })
-      .catch(() => undefined);
+      } catch {
+        // ignora
+      }
+    };
+    refresh();
+    const id = setInterval(refresh, 8000);
     return () => {
       alive = false;
+      clearInterval(id);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
   const [price, setPrice] = useState(0);
   const [change24h, setChange24h] = useState(0);

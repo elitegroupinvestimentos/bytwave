@@ -74,10 +74,20 @@ export default function Config() {
     let alive = true;
     async function load() {
       try {
-        const data = await api.getStrategy(userId, DEFAULT_CONFIG.symbol);
+        // Carrega a estratégia MAIS RECENTE (ou a que está running).
+        // Se não tiver nenhuma, mantém os defaults.
+        const list = await api.listStrategies(userId);
+        if (!alive) return;
+        if (list.length === 0) {
+          setLoadingCfg(false);
+          return;
+        }
+        const running = list.find((s) => s.status === 'running');
+        const target = running?.symbol ?? list[0].symbol;
+        const data = await api.getStrategy(userId, target);
         if (alive) setCfg({ ...DEFAULT_CONFIG, ...data });
       } catch {
-        // 404 = sem config ainda; mantém os defaults
+        // ignora
       } finally {
         if (alive) setLoadingCfg(false);
       }
