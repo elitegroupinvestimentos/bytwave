@@ -1,0 +1,11 @@
+# Bytwave web — sobrescreve as fases do nixpacks pra evitar `npm ci`
+# (o lockfile pode estar dessincronizado em projetos novos).
+
+[phases.install]
+cmds = ["npm install --no-audit --no-fund"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npx serve -s dist -l $PORT"

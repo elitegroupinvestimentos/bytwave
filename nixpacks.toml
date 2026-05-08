@@ -1,0 +1,10 @@
+# Bytwave backend — sobrescreve as fases do nixpacks pra evitar `npm ci`.
+
+[phases.install]
+cmds = ["npm install --no-audit --no-fund"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm start"
