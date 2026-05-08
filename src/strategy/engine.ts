@@ -257,7 +257,10 @@ async function openCycle(
     qty: baseQty,
   });
 
-  // SAFETY orders LIMIT — espalhadas conforme a escada
+  // SAFETY orders — TAKE_PROFIT_MARKET com gatilho em stopPrice.
+  // Quando o mark price tocar o nível, a Binance executa MARKET pra entrar.
+  // (Mais agressivo que LIMIT: garante fill quando o preço passa pelo nível,
+  // mas paga fee de taker e pode ter slippage se o mercado andar rápido.)
   const ladder = buildSafetyLadder(cfg, refPrice, side);
   for (const so of ladder) {
     try {
@@ -269,9 +272,9 @@ async function openCycle(
         symbol: cfg.symbol,
         side,
         role: 'SAFETY',
-        type: 'LIMIT',
+        type: 'TAKE_PROFIT_MARKET',
         qty: so.qty,
-        price: so.price,
+        stopPrice: so.price,
       });
     } catch (err: any) {
       await botLog({

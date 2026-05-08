@@ -41,8 +41,10 @@ export async function placeAndRecordOrder(p: PlaceParams): Promise<OrderRow> {
   const price = p.price !== undefined ? roundPrice(p.price, p.filters) : undefined;
   const stopPrice = p.stopPrice !== undefined ? roundPrice(p.stopPrice, p.filters) : undefined;
 
-  if (price !== undefined && !meetsMinNotional(price, qty, p.filters)) {
-    throw new Error(`Notional ${(price * qty).toFixed(2)} < minNotional ${p.filters.minNotional}`);
+  // Para TAKE_PROFIT_MARKET / STOP_MARKET o "preço de referência" é o stopPrice.
+  const refPrice = price ?? stopPrice;
+  if (refPrice !== undefined && !meetsMinNotional(refPrice, qty, p.filters)) {
+    throw new Error(`Notional ${(refPrice * qty).toFixed(2)} < minNotional ${p.filters.minNotional}`);
   }
 
   const orderSide: 'BUY' | 'SELL' =
