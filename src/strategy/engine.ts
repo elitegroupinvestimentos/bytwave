@@ -257,36 +257,11 @@ async function openCycle(
     qty: baseQty,
   });
 
-  // SAFETY orders — LIMIT (Binance bloqueia TAKE_PROFIT_MARKET sem
-  // closePosition no endpoint padrão; usaria o Algo Orders API à parte).
-  // Limit fica no book esperando preço chegar — fill = maker fee (mais barato).
-  const ladder = buildSafetyLadder(cfg, refPrice, side);
-  for (const so of ladder) {
-    try {
-      await placeAndRecordOrder({
-        user_id: cfg.user_id,
-        cycle_id: cycle.id,
-        client,
-        filters,
-        symbol: cfg.symbol,
-        side,
-        role: 'SAFETY',
-        type: 'LIMIT',
-        qty: so.qty,
-        price: so.price,
-      });
-    } catch (err: any) {
-      await botLog({
-        level: 'warn',
-        scope: 'engine',
-        user_id: cfg.user_id,
-        cycle_id: cycle.id,
-        message: `SO #${so.index} rejeitada: ${err.message}`,
-      });
-    }
-  }
+  // SOs NÃO são colocadas no book aqui — o bot vai DISPARAR cada SO como
+  // MARKET no advanceCycle quando o preço cruzar o nível. Isso evita N
+  // ordens pendentes (só o TP fica no book).
 
-  // TAKE_PROFIT_MARKET inicial (com base no preço base; será reajustado depois)
+  // TP inicial — será reajustado conforme preço médio mudar
   await refreshAndPlaceTakeProfit(cfg, cycle.id, side, client, filters, refPrice, baseQty);
 
   await botLog({
@@ -330,6 +305,12 @@ async function advanceCycle(
     base_qty: Number(refreshed.find((o) => o.role === 'BASE')?.filled_qty ?? 0),
     filled_safety_count: filledSO,
   });
+
+  // 2.5) Dispara próximas SOs como MARKET se o preço cruzou o nível.
+  // Estratégia "trigger on tick": evita ter N LIMITs pendentes — só o TP
+  // fica no book. A cada tick (~5s), checamos se a próxima SO da escada
+  // foi atingida; se sim, dispara MARKET imediato.
+  await triggerSafetyOrders(cfg, cycle, side, client, filters, refreshed);
 
   // 3) Ajusta o TAKE_PROFIT se preço médio mudou
   const tp = refreshed.find((o) => o.role === 'TAKE_PROFIT');
@@ -387,6 +368,77 @@ async function advanceCycle(
       cycle_id: cycle.id,
       message: `Ciclo ${side} fechado. PnL ≈ ${pnl.toFixed(4)} USDT`,
     });
+  }
+}
+
+/**
+ * Dispara MARKET pra cada SO que teve seu nível tocado pelo preço atual.
+ * SOs são ordenadas (LONG: descendentes, SHORT: ascendentes), então paramos
+ * no primeiro que ainda não foi atingido — todas as próximas também não foram.
+ *
+ * Tracking: usamos a quantidade de ordens com role='SAFETY' já registradas
+ * no DB (independente do status) como índice da próxima SO a verificar.
+ */
+async function triggerSafetyOrders(
+  cfg: StrategyConfig,
+  cycle: CycleRow,
+  side: CycleSide,
+  client: BinanceFuturesClient,
+  filters: SymbolFilters,
+  orders: OrderRow[],
+) {
+  const placedSO = orders.filter((o) => o.role === 'SAFETY').length;
+  if (placedSO >= cfg.max_safety_orders) return;
+
+  // Preço de entrada da BASE — referência fixa pra escada.
+  const baseOrder = orders.find(
+    (o) => o.role === 'BASE' && (o.status === 'FILLED' || Number(o.filled_qty) > 0),
+  );
+  if (!baseOrder?.avg_fill_price) return;
+  const basePrice = Number(baseOrder.avg_fill_price);
+
+  let currentPrice: number;
+  try {
+    currentPrice = await client.tickerPrice(cfg.symbol);
+  } catch {
+    return;
+  }
+
+  const ladder = buildSafetyLadder(cfg, basePrice, side);
+  for (let i = placedSO; i < ladder.length; i++) {
+    const so = ladder[i];
+    const triggered = side === 'LONG' ? currentPrice <= so.price : currentPrice >= so.price;
+    if (!triggered) break; // escada ordenada — se essa não atingiu, próximas tb não
+
+    try {
+      await placeAndRecordOrder({
+        user_id: cfg.user_id,
+        cycle_id: cycle.id,
+        client,
+        filters,
+        symbol: cfg.symbol,
+        side,
+        role: 'SAFETY',
+        type: 'MARKET',
+        qty: so.qty,
+      });
+      await botLog({
+        level: 'info',
+        scope: 'engine',
+        user_id: cfg.user_id,
+        cycle_id: cycle.id,
+        message: `SO #${so.index} disparada (MARKET) — preço ${currentPrice} cruzou ${so.price.toFixed(2)}`,
+      });
+    } catch (err: any) {
+      await botLog({
+        level: 'warn',
+        scope: 'engine',
+        user_id: cfg.user_id,
+        cycle_id: cycle.id,
+        message: `SO #${so.index} falhou: ${err.message ?? err}`,
+      });
+      break;
+    }
   }
 }
 
