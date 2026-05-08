@@ -257,10 +257,9 @@ async function openCycle(
     qty: baseQty,
   });
 
-  // SAFETY orders — TAKE_PROFIT_MARKET com gatilho em stopPrice.
-  // Quando o mark price tocar o nível, a Binance executa MARKET pra entrar.
-  // (Mais agressivo que LIMIT: garante fill quando o preço passa pelo nível,
-  // mas paga fee de taker e pode ter slippage se o mercado andar rápido.)
+  // SAFETY orders — LIMIT (Binance bloqueia TAKE_PROFIT_MARKET sem
+  // closePosition no endpoint padrão; usaria o Algo Orders API à parte).
+  // Limit fica no book esperando preço chegar — fill = maker fee (mais barato).
   const ladder = buildSafetyLadder(cfg, refPrice, side);
   for (const so of ladder) {
     try {
@@ -272,9 +271,9 @@ async function openCycle(
         symbol: cfg.symbol,
         side,
         role: 'SAFETY',
-        type: 'TAKE_PROFIT_MARKET',
+        type: 'LIMIT',
         qty: so.qty,
-        stopPrice: so.price,
+        price: so.price,
       });
     } catch (err: any) {
       await botLog({
