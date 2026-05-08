@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: hsl(220 33% 4%);
+    color: hsl(0 0% 98%);
+    overflow-x: hidden;
+  }
+  *::selection {
+    background: hsl(185 80% 50% / 0.3);
+  }
+}
+
+@layer utilities {
+  .gradient-text-primary {
+    background: linear-gradient(
+      135deg,
+      hsl(185 80% 60%) 0%,
+      hsl(165 80% 50%) 50%,
+      hsl(195 90% 65%) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .text-glow {
+    text-shadow: 0 0 20px hsl(185 80% 50% / 0.3);
+  }
+
+  .box-glow {
+    box-shadow:
+      0 0 30px hsl(185 80% 50% / 0.4),
+      0 0 60px hsl(185 80% 50% / 0.2);
+  }
+
+  .gradient-hero {
+    background:
+      radial-gradient(ellipse at top right, hsl(185 80% 50% / 0.08), transparent 50%),
+      radial-gradient(ellipse at bottom left, hsl(165 80% 45% / 0.06), transparent 50%),
+      hsl(220 33% 4%);
+  }
+
+  .grid-bg {
+    background-image:
+      linear-gradient(hsl(185 80% 50% / 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(185 80% 50% / 0.04) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}

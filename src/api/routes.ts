@@ -1,0 +1,498 @@
+import { Router, Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
+import {
+  createUserSchema,
+  saveBinanceKeysSchema,
+  strategyConfigSchema,
+  botActionSchema,
+} from '../utils/validators';
+import {
+  createUser,
+  getUser,
+  getUserByEmail,
+  saveBinanceKeys,
+  upsertStrategyConfig,
+  getStrategyConfig,
+  listStrategiesForUser,
+  setConfigStatus,
+  listOpenOrders,
+  listOrderHistory,
+  listOpenCyclesForUser,
+  getPerformanceSummary,
+} from '../services/supabase/service';
+import { getBinanceClient, invalidateBinanceClient } from '../services/binance/factory';
+import { botLog } from '../services/logs/logger';
+import { env } from '../config/env';
+import {
+  getTokenBalance,
+  grantTokens,
+  listTokenPacks,
+  listTokenTransactions,
+  purchasePack,
+} from '../services/supabase/tokens';
+import { hashPassword, comparePassword, signJwt, verifyJwt } from '../services/auth';
+import { supabase } from '../services/supabase/client';
+
+export const router = Router();
+
+// helper para tratar errors uniformes
+function ah(fn: (req: Request, res: Response) => Promise<unknown>) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    fn(req, res).catch(next);
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// requireAuth — valida JWT do header Authorization: Bearer <token>
+// e seta req.user com {id, email}.
+// ─────────────────────────────────────────────────────────────────────
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      user?: { id: string; email: string };
+    }
+  }
+}
+
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  const auth = req.headers.authorization;
+  if (!auth || !auth.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'unauthorized', message: 'Token ausente' });
+  }
+  const token = auth.slice('Bearer '.length).trim();
+  try {
+    const payload = verifyJwt(token);
+    req.user = { id: payload.sub, email: payload.email };
+    next();
+  } catch {
+    res.status(401).json({ error: 'unauthorized', message: 'Token inválido ou expirado' });
+  }
+}
+
+// Garante que o user_id do path/body bate com o do JWT (proteção contra
+// cliente malicioso passar user_id de outra pessoa).
+function requireSelf(getUserId: (req: Request) => string | undefined) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const target = getUserId(req);
+    if (!target || target !== req.user?.id) {
+      return res.status(403).json({ error: 'forbidden', message: 'Recurso não pertence ao usuário autenticado' });
+    }
+    next();
+  };
+}
+
+// ── meta ────────────────────────────────────────────────────────────────────
+router.get('/health', (_req, res) => {
+  res.json({ ok: true, mode: env.BINANCE_MODE });
+});
+
+// ── auth (cadastro + login com senha + JWT) ────────────────────────────────
+//
+// Fluxo:
+//  - POST /auth/register: cria usuário com bcrypt(password) + retorna JWT
+//  - POST /auth/login:    valida senha + retorna JWT
+//  - GET /auth/me:        devolve usuário logado (valida o token)
+
+const registerSchema = z.object({
+  email: z.string().email().transform((s) => s.toLowerCase().trim()),
+  name: z.string().min(1).max(80).optional(),
+  password: z.string().min(8, 'A senha precisa ter pelo menos 8 caracteres'),
+});
+
+router.post(
+  '/auth/register',
+  ah(async (req, res) => {
+    const body = registerSchema.parse(req.body);
+
+    const existing = await getUserByEmail(body.email);
+    if (existing) {
+      return res.status(409).json({
+        error: 'email_in_use',
+        message: 'Já existe uma conta com esse e-mail. Faça login.',
+      });
+    }
+
+    const password_hash = await hashPassword(body.password);
+    const user = await createUser({ email: body.email, name: body.name, password_hash });
+    const token = signJwt({ sub: user.id, email: user.email });
+
+    res.status(201).json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        token_balance: user.token_balance,
+      },
+    });
+  }),
+);
+
+const loginSchema = z.object({
+  email: z.string().email().transform((s) => s.toLowerCase().trim()),
+  password: z.string().min(1),
+});
+
+router.post(
+  '/auth/login',
+  ah(async (req, res) => {
+    const body = loginSchema.parse(req.body);
+
+    // Busca incluindo password_hash (que é nullable)
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, email, name, token_balance, password_hash')
+      .eq('email', body.email)
+      .maybeSingle();
+    if (error) throw error;
+
+    const fail = () =>
+      res.status(401).json({ error: 'invalid_credentials', message: 'E-mail ou senha inválidos' });
+
+    if (!data || !data.password_hash) return fail();
+    const ok = await comparePassword(body.password, data.password_hash);
+    if (!ok) return fail();
+
+    const token = signJwt({ sub: data.id, email: data.email });
+    res.json({
+      token,
+      user: {
+        id: data.id,
+        email: data.email,
+        name: data.name,
+        token_balance: data.token_balance,
+      },
+    });
+  }),
+);
+
+// Devolve o usuário autenticado pelo JWT (para o front confirmar a sessão).
+router.get(
+  '/auth/me',
+  requireAuth,
+  ah(async (req, res) => {
+    const u = await getUser(req.user!.id);
+    if (!u) return res.status(404).json({ error: 'not found' });
+    res.json({
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      token_balance: u.token_balance,
+    });
+  }),
+);
+
+// ── users (rotas internas; user_id vem do path mas valida JWT) ──────────────
+router.get(
+  '/users/:id',
+  requireAuth,
+  requireSelf((req) => req.params.id),
+  ah(async (req, res) => {
+    const u = await getUser(req.params.id);
+    if (!u) return res.status(404).json({ error: 'not found' });
+    res.json(u);
+  }),
+);
+
+// ── binance keys (protegido) ───────────────────────────────────────────────
+router.post(
+  '/binance/keys',
+  requireAuth,
+  requireSelf((req) => req.body?.user_id),
+  ah(async (req, res) => {
+    const body = saveBinanceKeysSchema.parse(req.body);
+    const saved = await saveBinanceKeys(body);
+    invalidateBinanceClient(body.user_id);
+    res.json(saved);
+  }),
+);
+
+// Endpoint utilitário para validar credenciais (chama /balance).
+router.get(
+  '/binance/test/:user_id',
+  requireAuth,
+  requireSelf((req) => req.params.user_id),
+  ah(async (req, res) => {
+    const client = await getBinanceClient(req.params.user_id);
+    const { total, available } = await client.getUsdtBalance();
+    res.json({ ok: true, mode: env.BINANCE_MODE, total, available });
+  }),
+);
+
+// Status da conexão Binance (não devolve chaves) — frontend usa pra
+// mostrar "✓ Binance conectada" sem precisar decriptar.
+router.get(
+  '/binance/status/:user_id',
+  requireAuth,
+  requireSelf((req) => req.params.user_id),
+  ah(async (req, res) => {
+    const { data, error } = await supabase
+      .from('binance_keys')
+      .select('id, mode, label, created_at')
+      .eq('user_id', req.params.user_id)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json({
+      connected: (data ?? []).length > 0,
+      keys: (data ?? []).map((k) => ({
+        id: k.id,
+        mode: k.mode,
+        label: k.label,
+        created_at: k.created_at,
+      })),
+    });
+  }),
+);
+
+// ── strategy config (protegido) ────────────────────────────────────────────
+router.post(
+  '/strategy',
+  requireAuth,
+  requireSelf((req) => req.body?.user_id),
+  ah(async (req, res) => {
+    const body = strategyConfigSchema.parse(req.body);
+
+    // Valida o par contra a Binance ANTES de salvar (evita XRPUSD vs XRPUSDT)
+    try {
+      const client = await getBinanceClient(body.user_id);
+      await client.getSymbolFilters(body.symbol);
+    } catch (err: any) {
+      if (String(err?.message ?? '').includes('não encontrado')) {
+        return res.status(400).json({
+          error: 'invalid_symbol',
+          message: `O par "${body.symbol}" não existe na Binance Futures. Lembre-se de incluir USDT no final (ex: XRPUSDT, BTCUSDT).`,
+        });
+      }
+      // Outros erros (sem chave Binance, etc.) — deixa salvar mesmo assim
+    }
+
+    const cfg = await upsertStrategyConfig(body);
+    res.json(cfg);
+  }),
+);
+
+router.get(
+  '/strategy/:user_id/:symbol',
+  requireAuth,
+  requireSelf((req) => req.params.user_id),
+  ah(async (req, res) => {
+    const cfg = await getStrategyConfig(req.params.user_id, req.params.symbol.toUpperCase());
+    if (!cfg) return res.status(404).json({ error: 'not found' });
+    res.json(cfg);
+  }),
+);
+
+// Lista TODAS as configs do usuário — frontend usa para popular o seletor de par.
+router.get(
+  '/strategies/:user_id',
+  requireAuth,
+  requireSelf((req) => req.params.user_id),
+  ah(async (req, res) => {
+    const list = await listStrategiesForUser(req.params.user_id);
+    res.json(list);
+  }),
+);
+
+// ── bot control ─────────────────────────────────────────────────────────────
+async function transitionConfig(req: Request, res: Response, next: 'running' | 'paused' | 'stopped') {
+  const body = botActionSchema.parse(req.body);
+  const cfg = await getStrategyConfig(body.user_id, body.symbol.toUpperCase());
+  if (!cfg) return res.status(404).json({ error: 'config não encontrada' });
+
+  // Bloqueio de tokens só ao INICIAR — pause/stop não dependem de saldo.
+  if (next === 'running' && env.TOKENS_PER_CYCLE > 0) {
+    const balance = await getTokenBalance(cfg.user_id);
+    if (balance < env.TOKENS_PER_CYCLE) {
+      return res.status(402).json({
+        error: 'insufficient_tokens',
+        message:
+          'Seus tokens acabaram. Compre mais tokens para continuar utilizando a ferramenta.',
+        balance,
+        required: env.TOKENS_PER_CYCLE,
+      });
+    }
+  }
+
+  await setConfigStatus(cfg.id, next);
+  await botLog({
+    level: 'info',
+    scope: 'api',
+    user_id: cfg.user_id,
+    message: `Config ${cfg.symbol} → ${next}`,
+  });
+  res.json({ ...cfg, status: next });
+}
+
+router.post(
+  '/bot/start',
+  requireAuth,
+  requireSelf((req) => req.body?.user_id),
+  ah((req, res) => transitionConfig(req, res, 'running')),
+);
+router.post(
+  '/bot/pause',
+  requireAuth,
+  requireSelf((req) => req.body?.user_id),
+  ah((req, res) => transitionConfig(req, res, 'paused')),
+);
+router.post(
+  '/bot/stop',
+  requireAuth,
+  requireSelf((req) => req.body?.user_id),
+  ah((req, res) => transitionConfig(req, res, 'stopped')),
+);
+
+// ── status / orders / pnl (protegido) ──────────────────────────────────────
+router.get(
+  '/status/:user_id',
+  requireAuth,
+  requireSelf((req) => req.params.user_id),
+  ah(async (req, res) => {
+    const cycles = await listOpenCyclesForUser(req.params.user_id);
+    res.json({ open_cycles: cycles });
+  }),
+);
+
+router.get(
+  '/orders/open/:user_id',
+  requireAuth,
+  requireSelf((req) => req.params.user_id),
+  ah(async (req, res) => {
+    const data = await listOpenOrders(req.params.user_id);
+    res.json(data);
+  }),
+);
+
+router.get(
+  '/orders/history/:user_id',
+  requireAuth,
+  requireSelf((req) => req.params.user_id),
+  ah(async (req, res) => {
+    const limit = Number(req.query.limit ?? 200);
+    const data = await listOrderHistory(req.params.user_id, limit);
+    res.json(data);
+  }),
+);
+
+router.get(
+  '/pnl/:user_id',
+  requireAuth,
+  requireSelf((req) => req.params.user_id),
+  ah(async (req, res) => {
+    const data = await getPerformanceSummary(req.params.user_id);
+    res.json(data);
+  }),
+);
+
+// ── tokens ──────────────────────────────────────────────────────────────────
+//
+// Regras:
+//  - balance e history são read-only por user_id (depois adicionamos auth)
+//  - grant é admin-only (no MVP fica aberto, futuro: middleware de admin)
+//  - purchase credita tokens direto (no MVP); quando integrar Pix/cartão,
+//    o gateway de pagamento confirma antes de chamar grantTokens.
+
+router.get(
+  '/tokens/config',
+  ah(async (_req, res) => {
+    res.json({
+      initial_grant: env.INITIAL_TOKEN_GRANT,
+      tokens_per_cycle: env.TOKENS_PER_CYCLE,
+      low_threshold: env.LOW_TOKENS_THRESHOLD,
+    });
+  }),
+);
+
+router.get(
+  '/tokens/balance/:user_id',
+  requireAuth,
+  requireSelf((req) => req.params.user_id),
+  ah(async (req, res) => {
+    const balance = await getTokenBalance(req.params.user_id);
+    res.json({
+      user_id: req.params.user_id,
+      balance,
+      low: balance > 0 && balance <= env.LOW_TOKENS_THRESHOLD,
+      empty: balance <= 0,
+      tokens_per_cycle: env.TOKENS_PER_CYCLE,
+    });
+  }),
+);
+
+router.get(
+  '/tokens/history/:user_id',
+  requireAuth,
+  requireSelf((req) => req.params.user_id),
+  ah(async (req, res) => {
+    const limit = Number(req.query.limit ?? 50);
+    const data = await listTokenTransactions(req.params.user_id, limit);
+    res.json(data);
+  }),
+);
+
+router.get(
+  '/tokens/packs',
+  ah(async (_req, res) => {
+    const packs = await listTokenPacks();
+    res.json(packs);
+  }),
+);
+
+const grantSchema = z.object({
+  user_id: z.string().uuid(),
+  amount: z.number().int().positive(),
+  reason: z.string().min(1).default('admin_grant'),
+});
+
+router.post(
+  '/tokens/grant',
+  ah(async (req, res) => {
+    const body = grantSchema.parse(req.body);
+    const result = await grantTokens(body);
+    await botLog({
+      level: 'info',
+      scope: 'tokens',
+      user_id: body.user_id,
+      message: `Admin grant: +${body.amount} tokens (reason=${body.reason}). Saldo final: ${result.balance_after}`,
+    });
+    res.json(result);
+  }),
+);
+
+const purchaseSchema = z.object({
+  user_id: z.string().uuid(),
+  pack_id: z.string().uuid(),
+});
+
+router.post(
+  '/tokens/purchase',
+  requireAuth,
+  requireSelf((req) => req.body?.user_id),
+  ah(async (req, res) => {
+    const body = purchaseSchema.parse(req.body);
+    // TODO: aqui é onde entra a confirmação de pagamento (Pix/cartão).
+    // Hoje é "free purchase" (testes). Quando ligar gateway:
+    //   1) cria intent de pagamento
+    //   2) usuário paga
+    //   3) webhook confirma → chama grantTokens
+    const result = await purchasePack(body);
+    await botLog({
+      level: 'info',
+      scope: 'tokens',
+      user_id: body.user_id,
+      message: `Purchase: pack "${result.pack.name}" (+${result.pack.tokens} tokens). Saldo final: ${result.balance_after}`,
+      data: { pack_id: result.pack.id, price_brl: Number(result.pack.price_brl) },
+    });
+    res.json(result);
+  }),
+);
+
+// ── error handler ───────────────────────────────────────────────────────────
+router.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  if (err instanceof z.ZodError) {
+    return res.status(400).json({ error: 'validation', details: err.errors });
+  }
+  const status = err.status || 500;
+  res.status(status).json({ error: err.message ?? 'internal error', code: err.code });
+});

@@ -1,0 +1,436 @@
+import { env } from '../config/env';
+import { botLog } from '../services/logs/logger';
+import { getBinanceClient } from '../services/binance/factory';
+import { BinanceApiError, BinanceFuturesClient } from '../services/binance/client';
+import {
+  createCycle,
+  getOpenCycle,
+  insertAccountSnapshot,
+  listOrdersByCycle,
+  listRunningConfigs,
+  setConfigStatus,
+  updateCycle,
+  updateOrder,
+} from '../services/supabase/service';
+import { consumeTokens, getTokenBalance } from '../services/supabase/tokens';
+import { placeAndRecordOrder, refreshOrderStatus } from './orderManager';
+import { buildSafetyLadder, weightedAveragePrice } from './safetyOrderManager';
+import { takeProfitPrice } from './profitManager';
+import type { CycleRow, CycleSide, OrderRow, StrategyConfig } from '../types';
+import type { SymbolFilters } from '../utils/precision';
+
+// Trava por usuário+symbol+side para evitar concorrência no mesmo tick.
+const locks = new Set<string>();
+const lockKey = (cfg: StrategyConfig, side: CycleSide) => `${cfg.user_id}:${cfg.symbol}:${side}`;
+
+async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T | null> {
+  if (locks.has(key)) return null;
+  locks.add(key);
+  try {
+    return await fn();
+  } finally {
+    locks.delete(key);
+  }
+}
+
+/**
+ * Executa um tick para todas as configs com status='running'.
+ * Para cada config processa LONG e SHORT.
+ */
+export async function runTick(): Promise<void> {
+  const configs = await listRunningConfigs();
+  if (!configs.length) return;
+
+  for (const cfg of configs) {
+    let client: BinanceFuturesClient;
+    try {
+      client = await getBinanceClient(cfg.user_id);
+    } catch (err: any) {
+      await botLog({
+        level: 'error',
+        scope: 'engine',
+        user_id: cfg.user_id,
+        message: `Sem cliente Binance: ${err.message}`,
+      });
+      continue;
+    }
+
+    let filters: SymbolFilters;
+    try {
+      filters = await client.getSymbolFilters(cfg.symbol);
+    } catch (err: any) {
+      await botLog({
+        level: 'error',
+        scope: 'engine',
+        user_id: cfg.user_id,
+        message: `Falha ao obter filtros do símbolo: ${err.message}`,
+      });
+      continue;
+    }
+
+    // Persiste snapshot de conta (não-bloqueante para o tick).
+    persistSnapshot(cfg.user_id, client).catch(() => {});
+
+    for (const side of ['LONG', 'SHORT'] as CycleSide[]) {
+      const key = lockKey(cfg, side);
+      await withLock(key, async () => {
+        try {
+          await processSide(cfg, side, client, filters);
+        } catch (err: any) {
+          const msg = err instanceof BinanceApiError ? `${err.code} ${err.message}` : err.message;
+          await botLog({
+            level: 'error',
+            scope: 'engine',
+            user_id: cfg.user_id,
+            message: `Erro processando ${cfg.symbol} ${side}: ${msg}`,
+            data: { err: String(err) },
+          });
+        }
+      });
+    }
+  }
+}
+
+/**
+ * Processa um lado (LONG ou SHORT). Abre ciclo se não existir, ou avança
+ * o ciclo aberto (atualiza preço médio, recoloca TP, fecha se TP filled).
+ */
+async function processSide(
+  cfg: StrategyConfig,
+  side: CycleSide,
+  client: BinanceFuturesClient,
+  filters: SymbolFilters,
+): Promise<void> {
+  let cycle = await getOpenCycle(cfg.user_id, cfg.symbol, side);
+
+  if (!cycle) {
+    // ── Token gate ── primeiro tudo: sem tokens, NADA é enviado para a Binance.
+    if (!(await chargeForCycleOpen(cfg, side))) return;
+    if (!(await preTradeChecks(cfg, client))) return;
+    await ensureAccountReady(cfg, client);
+    cycle = await openCycle(cfg, side, client, filters);
+    return;
+  }
+
+  await advanceCycle(cfg, cycle, side, client, filters);
+}
+
+// ─── Token gate: cobra tokens antes de abrir ciclo ──────────────────────────
+//
+// Estratégia por enquanto: 1 ciclo = N tokens (env.TOKENS_PER_CYCLE).
+// Para mudar a regra (por ordem, por tick, etc.), substituir este helper —
+// o engine só chama esta função, não conhece a regra de cobrança.
+//
+// IMPORTANTE: a função RPC `consume_tokens` no Postgres faz lock pessimista
+// (FOR UPDATE) na linha do usuário, garantindo que dois ciclos simultâneos
+// (LONG + SHORT no mesmo tick) não façam consumo duplicado / saldo negativo.
+const userPausedNoToken = new Set<string>();
+
+async function chargeForCycleOpen(cfg: StrategyConfig, side: CycleSide): Promise<boolean> {
+  if (env.TOKENS_PER_CYCLE <= 0) return true;
+
+  // Pré-check leve para evitar RPC quando obviamente sem saldo (cheap e idempotente).
+  const balance = await getTokenBalance(cfg.user_id).catch(() => 0);
+  if (balance < env.TOKENS_PER_CYCLE) {
+    await onInsufficientTokens(cfg, balance);
+    return false;
+  }
+
+  const result = await consumeTokens({
+    user_id: cfg.user_id,
+    amount: env.TOKENS_PER_CYCLE,
+    reason: 'cycle_open',
+    metadata: { symbol: cfg.symbol, side, config_id: cfg.id },
+  }).catch((err) => ({ success: false, balance_after: balance, message: String(err) }));
+
+  if (!result.success) {
+    await onInsufficientTokens(cfg, result.balance_after);
+    return false;
+  }
+
+  // Saiu de "paused-no-token" se estava marcado
+  userPausedNoToken.delete(cfg.user_id);
+
+  await botLog({
+    level: 'debug',
+    scope: 'tokens',
+    user_id: cfg.user_id,
+    message: `Cobrado ${env.TOKENS_PER_CYCLE} token(s) por ciclo ${side} ${cfg.symbol}. Saldo: ${result.balance_after}`,
+  });
+  return true;
+}
+
+async function onInsufficientTokens(cfg: StrategyConfig, balance: number) {
+  // Pausa a config para parar de tentar abrir ciclos a cada tick.
+  // Usuário precisa comprar tokens e clicar em Iniciar de novo.
+  if (!userPausedNoToken.has(cfg.user_id)) {
+    userPausedNoToken.add(cfg.user_id);
+    await setConfigStatus(cfg.id, 'paused').catch(() => undefined);
+    await botLog({
+      level: 'warn',
+      scope: 'tokens',
+      user_id: cfg.user_id,
+      message: `Tokens insuficientes (saldo=${balance}, necessário=${env.TOKENS_PER_CYCLE}). Bot pausado para ${cfg.symbol}.`,
+      data: { balance, required: env.TOKENS_PER_CYCLE, action: 'auto_paused' },
+    });
+  }
+}
+
+// ─── Pre-trade checks (saldo, exposição, alavancagem) ───────────────────────
+async function preTradeChecks(cfg: StrategyConfig, client: BinanceFuturesClient): Promise<boolean> {
+  const { available } = await client.getUsdtBalance();
+  if (available < cfg.base_order_usdt) {
+    await botLog({
+      level: 'warn',
+      scope: 'engine',
+      user_id: cfg.user_id,
+      message: `Saldo disponível ${available} < base order ${cfg.base_order_usdt}. Pulando.`,
+    });
+    return false;
+  }
+
+  if (env.MAX_EXPOSURE_USDT > 0) {
+    // Soma do invested_usdt de ciclos abertos.
+    const positions = await client.positions(cfg.symbol);
+    const exposure = positions.reduce(
+      (acc: number, p: any) => acc + Math.abs(Number(p.notional ?? 0)),
+      0,
+    );
+    if (exposure >= env.MAX_EXPOSURE_USDT) {
+      await botLog({
+        level: 'warn',
+        scope: 'engine',
+        user_id: cfg.user_id,
+        message: `Exposição ${exposure} >= MAX_EXPOSURE_USDT ${env.MAX_EXPOSURE_USDT}. Pulando.`,
+      });
+      return false;
+    }
+  }
+  return true;
+}
+
+let hedgeEnabledOnce = new Set<string>();
+async function ensureAccountReady(cfg: StrategyConfig, client: BinanceFuturesClient) {
+  const userKey = `${cfg.user_id}`;
+  if (!hedgeEnabledOnce.has(userKey)) {
+    await client.enableHedgeMode().catch(() => undefined);
+    hedgeEnabledOnce.add(userKey);
+  }
+  // Define alavancagem do par (idempotente).
+  await client.setLeverage(cfg.symbol, cfg.leverage).catch(async (err: any) => {
+    await botLog({
+      level: 'warn',
+      scope: 'engine',
+      user_id: cfg.user_id,
+      message: `Falha ao definir alavancagem: ${err.message}`,
+    });
+  });
+}
+
+// ─── Abertura de ciclo ──────────────────────────────────────────────────────
+async function openCycle(
+  cfg: StrategyConfig,
+  side: CycleSide,
+  client: BinanceFuturesClient,
+  filters: SymbolFilters,
+): Promise<CycleRow> {
+  const refPrice = await client.tickerPrice(cfg.symbol);
+
+  const cycle = await createCycle({
+    user_id: cfg.user_id,
+    config_id: cfg.id,
+    symbol: cfg.symbol,
+    side,
+  });
+
+  // BASE order: MARKET com qty derivada do base_order_usdt
+  const baseQty = cfg.base_order_usdt / refPrice;
+  await placeAndRecordOrder({
+    user_id: cfg.user_id,
+    cycle_id: cycle.id,
+    client,
+    filters,
+    symbol: cfg.symbol,
+    side,
+    role: 'BASE',
+    type: 'MARKET',
+    qty: baseQty,
+  });
+
+  // SAFETY orders LIMIT — espalhadas conforme a escada
+  const ladder = buildSafetyLadder(cfg, refPrice, side);
+  for (const so of ladder) {
+    try {
+      await placeAndRecordOrder({
+        user_id: cfg.user_id,
+        cycle_id: cycle.id,
+        client,
+        filters,
+        symbol: cfg.symbol,
+        side,
+        role: 'SAFETY',
+        type: 'LIMIT',
+        qty: so.qty,
+        price: so.price,
+      });
+    } catch (err: any) {
+      await botLog({
+        level: 'warn',
+        scope: 'engine',
+        user_id: cfg.user_id,
+        cycle_id: cycle.id,
+        message: `SO #${so.index} rejeitada: ${err.message}`,
+      });
+    }
+  }
+
+  // TAKE_PROFIT_MARKET inicial (com base no preço base; será reajustado depois)
+  await refreshAndPlaceTakeProfit(cfg, cycle.id, side, client, filters, refPrice, baseQty);
+
+  await botLog({
+    level: 'info',
+    scope: 'engine',
+    user_id: cfg.user_id,
+    cycle_id: cycle.id,
+    message: `Ciclo ${side} aberto em ${cfg.symbol} @ ~${refPrice}`,
+  });
+  return cycle;
+}
+
+// ─── Avanço de ciclo ────────────────────────────────────────────────────────
+async function advanceCycle(
+  cfg: StrategyConfig,
+  cycle: CycleRow,
+  side: CycleSide,
+  client: BinanceFuturesClient,
+  filters: SymbolFilters,
+) {
+  // 1) Sincroniza ordens locais com a Binance
+  const orders = await listOrdersByCycle(cycle.id);
+  const refreshed: OrderRow[] = [];
+  for (const o of orders) refreshed.push(await refreshOrderStatus(client, o));
+
+  // 2) Calcula posição (BASE + SOs filled)
+  const fills = refreshed
+    .filter((o) => o.role === 'BASE' || o.role === 'SAFETY')
+    .filter((o) => o.filled_qty > 0 && o.avg_fill_price)
+    .map((o) => ({ price: Number(o.avg_fill_price), qty: Number(o.filled_qty) }));
+
+  const { avg, totalQty, invested } = weightedAveragePrice(fills);
+  const filledSO = refreshed.filter(
+    (o) => o.role === 'SAFETY' && o.status === 'FILLED',
+  ).length;
+
+  await updateCycle(cycle.id, {
+    avg_price: avg,
+    total_qty: totalQty,
+    invested_usdt: invested,
+    base_qty: Number(refreshed.find((o) => o.role === 'BASE')?.filled_qty ?? 0),
+    filled_safety_count: filledSO,
+  });
+
+  // 3) Ajusta o TAKE_PROFIT se preço médio mudou
+  const tp = refreshed.find((o) => o.role === 'TAKE_PROFIT');
+  const newTpPrice = takeProfitPrice(cfg, avg || 0, side);
+  if (avg > 0 && tp && tp.status !== 'FILLED') {
+    const tpPrice = Number(tp.stop_price ?? tp.price ?? 0);
+    const driftPct = tpPrice > 0 ? Math.abs(tpPrice - newTpPrice) / tpPrice : 1;
+    // Se drift > 0.05% recoloca o TP.
+    if (driftPct > 0.0005) {
+      try {
+        if (tp.binance_order_id) {
+          await client.cancelOrder(cfg.symbol, tp.binance_order_id).catch(() => undefined);
+          await updateOrder(tp.id, { status: 'CANCELED' });
+        }
+        await refreshAndPlaceTakeProfit(cfg, cycle.id, side, client, filters, avg, totalQty);
+      } catch (err: any) {
+        await botLog({
+          level: 'warn',
+          scope: 'engine',
+          user_id: cfg.user_id,
+          cycle_id: cycle.id,
+          message: `Falha ao reposicionar TP: ${err.message}`,
+        });
+      }
+    }
+  }
+
+  // 4) Fecha o ciclo se o TP foi filled
+  const filledTp = refreshed.find((o) => o.role === 'TAKE_PROFIT' && o.status === 'FILLED');
+  if (filledTp) {
+    const closePrice = Number(filledTp.avg_fill_price ?? 0);
+    const pnl =
+      side === 'LONG'
+        ? (closePrice - avg) * totalQty
+        : (avg - closePrice) * totalQty;
+
+    // Cancela quaisquer SOs pendentes do ciclo.
+    for (const o of refreshed) {
+      if (o.role === 'SAFETY' && o.status !== 'FILLED' && o.binance_order_id) {
+        await client.cancelOrder(cfg.symbol, o.binance_order_id).catch(() => undefined);
+        await updateOrder(o.id, { status: 'CANCELED' });
+      }
+    }
+
+    await updateCycle(cycle.id, {
+      status: 'closed',
+      closed_at: new Date().toISOString(),
+      realized_pnl_usdt: pnl,
+    });
+
+    await botLog({
+      level: 'info',
+      scope: 'engine',
+      user_id: cfg.user_id,
+      cycle_id: cycle.id,
+      message: `Ciclo ${side} fechado. PnL ≈ ${pnl.toFixed(4)} USDT`,
+    });
+  }
+}
+
+async function refreshAndPlaceTakeProfit(
+  cfg: StrategyConfig,
+  cycle_id: string,
+  side: CycleSide,
+  client: BinanceFuturesClient,
+  filters: SymbolFilters,
+  avgPrice: number,
+  qty: number,
+) {
+  const tpPrice = takeProfitPrice(cfg, avgPrice, side);
+  await placeAndRecordOrder({
+    user_id: cfg.user_id,
+    cycle_id,
+    client,
+    filters,
+    symbol: cfg.symbol,
+    side,
+    role: 'TAKE_PROFIT',
+    type: 'TAKE_PROFIT_MARKET',
+    qty,
+    stopPrice: tpPrice,
+    closePosition: true,
+  });
+}
+
+async function persistSnapshot(user_id: string, client: BinanceFuturesClient) {
+  try {
+    const { total, available } = await client.getUsdtBalance();
+    const acc = await client.accountInfo();
+    const unrealized = Number(acc.totalUnrealizedProfit ?? 0);
+    const exposure = (acc.positions ?? []).reduce(
+      (s: number, p: any) => s + Math.abs(Number(p.notional ?? 0)),
+      0,
+    );
+    await insertAccountSnapshot({
+      user_id,
+      total_balance: total,
+      available,
+      unrealized_pnl: unrealized,
+      exposure_usdt: exposure,
+      raw: { totalWalletBalance: acc.totalWalletBalance },
+    });
+  } catch {
+    // snapshot é best-effort
+  }
+}
