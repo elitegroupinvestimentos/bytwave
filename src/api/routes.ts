@@ -354,13 +354,66 @@ router.get(
   }),
 );
 
+// Ordens abertas — consulta a Binance AO VIVO para descartar ordens
+// que já foram canceladas/preenchidas mas ainda não foram sincronizadas no DB.
+// Depois cruza com o DB pra trazer cycle_id, role (BASE/SAFETY/TP), etc.
 router.get(
   '/orders/open/:user_id',
   requireAuth,
   requireSelf((req) => req.params.user_id),
   ah(async (req, res) => {
-    const data = await listOpenOrders(req.params.user_id);
-    res.json(data);
+    const userId = req.params.user_id;
+
+    let liveOrders: any[] = [];
+    try {
+      const client = await getBinanceClient(userId);
+      liveOrders = await client.openOrders();
+    } catch {
+      // Sem chaves ou erro Binance → cai no fallback DB
+      const fallback = await listOpenOrders(userId);
+      return res.json(fallback);
+    }
+
+    // Pega metadata do DB pra enriquecer cada ordem viva
+    const dbOrders = await listOpenOrders(userId);
+    const byClientId = new Map(dbOrders.map((o) => [o.client_order_id, o]));
+
+    const merged = liveOrders.map((bo: any) => {
+      const db = byClientId.get(bo.clientOrderId);
+      if (db) {
+        return {
+          ...db,
+          status: bo.status,
+          filled_qty: Number(bo.executedQty ?? 0),
+          price: Number(bo.price ?? db.price ?? 0) || db.price,
+          stop_price: Number(bo.stopPrice ?? db.stop_price ?? 0) || db.stop_price,
+        };
+      }
+      // Ordem na Binance que não está no DB (manual ou de antes do bot)
+      return {
+        id: `live-${bo.orderId}`,
+        user_id: userId,
+        cycle_id: null,
+        symbol: bo.symbol,
+        side: bo.side,
+        position_side: bo.positionSide,
+        type: bo.type,
+        role: 'MANUAL',
+        price: Number(bo.price) || null,
+        stop_price: Number(bo.stopPrice) || null,
+        qty: Number(bo.origQty),
+        filled_qty: Number(bo.executedQty ?? 0),
+        avg_fill_price: null,
+        status: bo.status,
+        binance_order_id: bo.orderId,
+        client_order_id: bo.clientOrderId,
+        raw: bo,
+        created_at: new Date(bo.time).toISOString(),
+        updated_at: new Date(bo.updateTime ?? bo.time).toISOString(),
+      };
+    });
+
+    res.json(merged);
   }),
 );
 
