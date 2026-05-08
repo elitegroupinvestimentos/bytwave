@@ -171,6 +171,11 @@ export const api = {
     http<any>('/bot/pause', { method: 'POST', body: JSON.stringify(input) }),
   botStop: (input: { user_id: string; symbol: string }) =>
     http<any>('/bot/stop', { method: 'POST', body: JSON.stringify(input) }),
+  botReset: (input: { user_id: string; symbol?: string; close_positions?: boolean }) =>
+    http<{ ok: boolean; report: { canceled: string[]; closed: any[]; errors: any[] } }>(
+      '/bot/reset',
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
 };
 
 export interface TokenTransaction {

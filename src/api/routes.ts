@@ -343,6 +343,112 @@ router.post(
   ah((req, res) => transitionConfig(req, res, 'stopped')),
 );
 
+// Reset agressivo: cancela TODAS as ordens abertas na Binance pro usuário,
+// fecha posições (opcional), marca ciclos como 'closed' e pausa configs.
+const resetSchema = z.object({
+  user_id: z.string().uuid(),
+  symbol: z.string().optional(),
+  close_positions: z.boolean().default(false),
+});
+
+router.post(
+  '/bot/reset',
+  requireAuth,
+  requireSelf((req) => req.body?.user_id),
+  ah(async (req, res) => {
+    const body = resetSchema.parse(req.body);
+    const report: any = { canceled: [], closed: [], errors: [] };
+
+    let client;
+    try {
+      client = await getBinanceClient(body.user_id);
+    } catch (err: any) {
+      return res.status(400).json({ error: 'no_keys', message: err.message });
+    }
+
+    // 1) Cancela ordens abertas (por símbolo se especificado, senão todos)
+    try {
+      const openOrders = await client.openOrders();
+      const symbols = body.symbol
+        ? [body.symbol.toUpperCase()]
+        : [...new Set(openOrders.map((o: any) => o.symbol))];
+      for (const sym of symbols) {
+        try {
+          await client.cancelAllOpen(sym);
+          report.canceled.push(sym);
+        } catch (e: any) {
+          report.errors.push({ where: 'cancel', sym, err: e.message });
+        }
+      }
+    } catch (e: any) {
+      report.errors.push({ where: 'list', err: e.message });
+    }
+
+    // 2) Fecha posições se solicitado
+    if (body.close_positions) {
+      try {
+        const positions = await client.positions(body.symbol);
+        for (const p of positions) {
+          const amt = Number((p as any).positionAmt ?? 0);
+          if (amt === 0) continue;
+          if (body.symbol && (p as any).symbol !== body.symbol.toUpperCase()) continue;
+          const isLong = amt > 0;
+          try {
+            await client.placeOrder({
+              symbol: (p as any).symbol,
+              side: isLong ? 'SELL' : 'BUY',
+              positionSide: (p as any).positionSide,
+              type: 'MARKET',
+              quantity: Math.abs(amt),
+            });
+            report.closed.push({ sym: (p as any).symbol, qty: Math.abs(amt) });
+          } catch (e: any) {
+            report.errors.push({ where: 'close', sym: (p as any).symbol, err: e.message });
+          }
+        }
+      } catch (e: any) {
+        report.errors.push({ where: 'positions', err: e.message });
+      }
+    }
+
+    // 3) Marca ciclos abertos como closed
+    try {
+      let q = supabase
+        .from('cycles')
+        .update({ status: 'closed', closed_at: new Date().toISOString() })
+        .eq('user_id', body.user_id)
+        .eq('status', 'open');
+      if (body.symbol) q = q.eq('symbol', body.symbol.toUpperCase());
+      await q;
+    } catch (e: any) {
+      report.errors.push({ where: 'cycles', err: e.message });
+    }
+
+    // 4) Pausa configs running pra não reabrir tudo no próximo tick
+    try {
+      let q = supabase
+        .from('strategy_configs')
+        .update({ status: 'paused' })
+        .eq('user_id', body.user_id)
+        .eq('status', 'running');
+      if (body.symbol) q = q.eq('symbol', body.symbol.toUpperCase());
+      await q;
+    } catch (e: any) {
+      report.errors.push({ where: 'configs', err: e.message });
+    }
+
+    await botLog({
+      level: 'info',
+      scope: 'api',
+      user_id: body.user_id,
+      message: `Reset solicitado pelo usuário (symbol=${body.symbol ?? 'all'}, close=${body.close_positions})`,
+      data: report,
+    });
+
+    res.json({ ok: true, report });
+  }),
+);
+
 // ── status / orders / pnl (protegido) ──────────────────────────────────────
 router.get(
   '/status/:user_id',

@@ -187,6 +187,28 @@ export default function Dashboard() {
     }
   }
 
+  async function handleReset(closePositions: boolean) {
+    setActionMsg(null);
+    const confirmText = closePositions
+      ? 'Cancelar TODAS as ordens abertas E fechar posições agora (a mercado)?'
+      : 'Cancelar TODAS as ordens abertas (mantém posições)?';
+    if (!confirm(confirmText)) return;
+    try {
+      const result = await api.botReset({
+        user_id: userId,
+        // sem symbol = limpa todos os símbolos do user
+        close_positions: closePositions,
+      });
+      setStrategyStatus('paused');
+      setActionMsg({
+        type: 'success',
+        msg: `Reset feito: ${result.report.canceled.length} símbolo(s) cancelado(s), ${result.report.closed.length} posição(ões) fechada(s).`,
+      });
+    } catch (err: any) {
+      setActionMsg({ type: 'error', msg: err?.message ?? 'Erro ao resetar' });
+    }
+  }
+
   // Preço atual + variação 24h
   useEffect(() => {
     let alive = true;
@@ -279,6 +301,24 @@ export default function Dashboard() {
         onToggle={handleToggle}
         onRefresh={handleStop}
       />
+
+      {/* Botões de reset (cancelar ordens órfãs / zerar bot) */}
+      <div className="flex flex-wrap gap-2 text-xs">
+        <button
+          onClick={() => handleReset(false)}
+          className="px-3 py-1.5 rounded-full border border-yellow-500/40 text-yellow-300 hover:bg-yellow-500/10 transition-colors"
+          title="Cancela todas as ordens abertas na Binance (mantém posições)"
+        >
+          🧹 Cancelar todas as ordens
+        </button>
+        <button
+          onClick={() => handleReset(true)}
+          className="px-3 py-1.5 rounded-full border border-red-500/40 text-red-300 hover:bg-red-500/10 transition-colors"
+          title="Cancela ordens E fecha todas as posições a mercado"
+        >
+          ⚠️ Resetar tudo (cancela + fecha posições)
+        </button>
+      </div>
 
       {/* CTA quando ainda não tem estratégia */}
       {strategyStatus === 'missing' && (
