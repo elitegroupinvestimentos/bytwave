@@ -10,7 +10,25 @@ import { startWorker, stopWorker } from './worker';
 
 const app = express();
 app.use(helmet());
-app.use(cors());
+
+// CORS: env CORS_ORIGINS aceita "*" ou lista CSV
+const corsOrigins = env.CORS_ORIGINS.trim();
+if (corsOrigins === '*' || corsOrigins === '') {
+  app.use(cors());
+} else {
+  const allowed = corsOrigins.split(',').map((s) => s.trim()).filter(Boolean);
+  app.use(
+    cors({
+      origin: (origin, cb) => {
+        // Permite same-origin (sem Origin header) e qualquer item da lista.
+        if (!origin || allowed.includes(origin)) return cb(null, true);
+        cb(new Error(`Origin não permitida: ${origin}`));
+      },
+      credentials: true,
+    }),
+  );
+}
+
 app.use(express.json({ limit: '1mb' }));
 app.use(morgan('tiny'));
 

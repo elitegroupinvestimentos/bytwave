@@ -39,6 +39,11 @@ const schema = z.object({
   BCRYPT_ROUNDS: z.coerce.number().int().min(8).max(14).default(10),
   // Expiração do JWT (formato: "7d", "1h", "30m"). Padrão 7 dias.
   JWT_EXPIRES_IN: z.string().default('7d'),
+
+  // ── CORS (frontend domains) ──────────────────────────
+  // Lista CSV de origens permitidas. "*" = qualquer (só pra dev).
+  // Em prod: "https://bytwave.vercel.app,https://bytwave.up.railway.app"
+  CORS_ORIGINS: z.string().default('*'),
 });
 
 export const env = schema.parse(process.env);

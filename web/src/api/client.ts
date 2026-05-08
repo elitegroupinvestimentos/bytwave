@@ -1,7 +1,9 @@
 // Cliente HTTP simples para o backend Bytwave.
-// Em dev o Vite redireciona /api → http://localhost:3777 (vite.config.ts).
+// - Dev: VITE_API_URL vazio → usa "/api" e o Vite proxia para localhost:3777
+// - Prod: VITE_API_URL=https://bytwave-api.up.railway.app → URL completa
 
-const BASE = '/api';
+const API_HOST = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+const BASE = `${API_HOST}/api`;
 
 // Erro tipado para casos onde precisamos olhar o status (ex: 402 sem tokens).
 export class ApiError extends Error {
@@ -97,6 +99,21 @@ export const api = {
         updated_at: string;
       }>
     >(`/strategies/${userId}`),
+
+  saveStrategy: (input: {
+    user_id: string;
+    symbol: string;
+    capital_usdt: number;
+    leverage: number;
+    base_order_usdt: number;
+    first_safety_usdt: number;
+    max_safety_orders: number;
+    initial_distance_pct: number;
+    step_scale: number;
+    volume_scale: number;
+    target_profit_pct: number;
+  }) =>
+    http<any>('/strategy', { method: 'POST', body: JSON.stringify(input) }),
 
   // ── auth (com senha + JWT) ─────────────────────────────────────────────
   authRegister: (input: { email: string; name?: string; password: string }) =>

@@ -16,7 +16,8 @@ export function clearAdminPassword() {
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const pwd = getAdminPassword() ?? '';
-  const res = await fetch(`/api/admin${path}`, {
+  const API_HOST = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+  const res = await fetch(`${API_HOST}/api/admin${path}`, {
     ...init,
     headers: {
       'content-type': 'application/json',
@@ -79,14 +80,16 @@ export interface AdminPack {
 }
 
 export const admin = {
-  login: (password: string) =>
-    fetch('/api/admin/login', {
+  login: (password: string) => {
+    const API_HOST = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+    return fetch(`${API_HOST}/api/admin/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-admin-password': password },
     }).then(async (r) => {
       if (!r.ok) throw new ApiError(r.status, await r.json().catch(() => ({})));
       return r.json();
-    }),
+    });
+  },
 
   overview: () => http<AdminOverview>('/overview'),
   users: (search?: string) =>

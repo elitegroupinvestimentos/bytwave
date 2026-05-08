@@ -1,14 +1,9 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Settings, Key, Sliders, Save, Eye, EyeOff, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { DashboardLayout } from '../components/dashboard/DashboardLayout';
-import { ApiError, api, getSession } from '../api/client';
+import { ApiError, api } from '../api/client';
 import { useSession } from '../hooks/useSession';
 import { Navigate } from 'react-router-dom';
-
-function authHeaders(): Record<string, string> {
-  const s = getSession();
-  return s?.token ? { authorization: `Bearer ${s.token}` } : {};
-}
 
 interface StrategyConfig {
   id?: string;
@@ -79,14 +74,10 @@ export default function Config() {
     let alive = true;
     async function load() {
       try {
-        const res = await fetch(`/api/strategy/${userId}/${DEFAULT_CONFIG.symbol}`, {
-          headers: authHeaders(),
-        });
-        if (!alive) return;
-        if (res.ok) {
-          const data = await res.json();
-          setCfg({ ...DEFAULT_CONFIG, ...data });
-        }
+        const data = await api.getStrategy(userId, DEFAULT_CONFIG.symbol);
+        if (alive) setCfg({ ...DEFAULT_CONFIG, ...data });
+      } catch {
+        // 404 = sem config ainda; mantém os defaults
       } finally {
         if (alive) setLoadingCfg(false);
       }
@@ -102,20 +93,12 @@ export default function Config() {
     setSavingCfg(true);
     setCfgFeedback(null);
     try {
-      const res = await fetch('/api/strategy', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ ...cfg, user_id: userId }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new ApiError(res.status, body);
-      }
-      const saved = await res.json();
+      const saved = await api.saveStrategy({ ...cfg, user_id: userId });
       setCfg({ ...cfg, ...saved });
       setCfgFeedback({ ok: true, msg: 'Configuração salva.' });
     } catch (err: any) {
-      setCfgFeedback({ ok: false, msg: err?.message ?? 'Erro ao salvar' });
+      const msg = err instanceof ApiError ? err.body?.message ?? err.message : err?.message;
+      setCfgFeedback({ ok: false, msg: msg ?? 'Erro ao salvar' });
     } finally {
       setSavingCfg(false);
     }
@@ -130,25 +113,18 @@ export default function Config() {
     setSavingKeys(true);
     setKeysFeedback(null);
     try {
-      const res = await fetch('/api/binance/keys', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({
-          user_id: userId,
-          mode: 'testnet',
-          api_key: apiKey,
-          api_secret: apiSecret,
-        }),
+      await api.saveBinanceKeys({
+        user_id: userId,
+        mode: 'testnet',
+        api_key: apiKey,
+        api_secret: apiSecret,
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new ApiError(res.status, body);
-      }
-      setKeysFeedback({ ok: true, msg: 'Chaves criptografadas e salvas.' });
       setApiKey('');
       setApiSecret('');
+      setKeysFeedback({ ok: true, msg: 'Chaves criptografadas e salvas.' });
     } catch (err: any) {
-      setKeysFeedback({ ok: false, msg: err?.message ?? 'Erro ao salvar chaves' });
+      const msg = err instanceof ApiError ? err.body?.message ?? err.message : err?.message;
+      setKeysFeedback({ ok: false, msg: msg ?? 'Erro ao salvar chaves' });
     } finally {
       setSavingKeys(false);
     }
