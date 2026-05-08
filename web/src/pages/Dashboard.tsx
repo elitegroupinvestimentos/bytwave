@@ -15,7 +15,7 @@ import { PositionCard, PositionData } from '../components/dashboard/PositionCard
 import { StatCard } from '../components/dashboard/StatCard';
 import { BankUsage } from '../components/dashboard/BankUsage';
 import { CycleHistory, CycleHistoryItem } from '../components/dashboard/CycleHistory';
-import { OpenOrdersTable } from '../components/dashboard/OpenOrdersTable';
+import { OpenPositionsTable } from '../components/dashboard/OpenPositionsTable';
 import { api, ApiError, fetchKlines, getSession } from '../api/client';
 import { useSession } from '../hooks/useSession';
 import { Navigate, useNavigate } from 'react-router-dom';
@@ -66,6 +66,7 @@ export default function Dashboard() {
   const [balance, setBalance] = useState(0);
   const [openCycles, setOpenCycles] = useState<any[]>([]);
   const [openOrders, setOpenOrders] = useState<any[]>([]);
+  const [positions, setPositions] = useState<any[]>([]);
   const [history, setHistory] = useState<CycleHistoryItem[]>([]);
   const [perf, setPerf] = useState({
     realized: 0,
@@ -79,17 +80,19 @@ export default function Dashboard() {
     let alive = true;
     const poll = async () => {
       try {
-        const [bal, st, hist, oo, pnl] = await Promise.all([
+        const [bal, st, hist, oo, pnl, pos] = await Promise.all([
           api.testBinance(userId).catch(() => null),
           api.status(userId).catch(() => ({ open_cycles: [] })),
           api.history(userId, 50).catch(() => []),
           api.openOrders(userId).catch(() => []),
           api.pnl(userId).catch(() => null),
+          api.positions(userId).catch(() => []),
         ]);
         if (!alive) return;
         if (bal) setBalance(bal.available);
         setOpenCycles(st.open_cycles ?? []);
         setOpenOrders(oo as any[]);
+        setPositions(pos as any[]);
         if (pnl) {
           setPerf({
             realized: pnl.realized_pnl_total ?? 0,
@@ -406,8 +409,8 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Linha 4: Tabela de Ordens Abertas (todas as safety + take profits ativos) */}
-      <OpenOrdersTable orders={openOrders} />
+      {/* Linha 4: Posições abertas (consultadas direto da Binance) */}
+      <OpenPositionsTable positions={positions} />
 
       {/* Linha 5: Banca + Histórico */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

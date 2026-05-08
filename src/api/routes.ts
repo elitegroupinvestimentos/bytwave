@@ -220,6 +220,37 @@ router.get(
   }),
 );
 
+// Posições abertas na Binance (qty != 0). Devolve symbol, lado, qty,
+// preço de entrada, mark price, alavancagem, PnL não realizado.
+router.get(
+  '/positions/:user_id',
+  requireAuth,
+  requireSelf((req) => req.params.user_id),
+  ah(async (req, res) => {
+    try {
+      const client = await getBinanceClient(req.params.user_id);
+      const positions = await client.positions();
+      // Devolve só as que têm qty != 0
+      const open = positions
+        .filter((p: any) => Math.abs(Number(p.positionAmt ?? 0)) > 0)
+        .map((p: any) => ({
+          symbol: p.symbol,
+          position_side: p.positionSide,
+          qty: Math.abs(Number(p.positionAmt)),
+          entry_price: Number(p.entryPrice ?? 0),
+          mark_price: Number(p.markPrice ?? 0),
+          unrealized_pnl: Number(p.unrealizedProfit ?? 0),
+          leverage: Number(p.leverage ?? 1),
+          isolated: p.isolated === true || p.isolated === 'true',
+          notional: Math.abs(Number(p.notional ?? 0)),
+        }));
+      res.json(open);
+    } catch (err: any) {
+      res.json([]);
+    }
+  }),
+);
+
 // Status da conexão Binance (não devolve chaves) — frontend usa pra
 // mostrar "✓ Binance conectada" sem precisar decriptar.
 router.get(

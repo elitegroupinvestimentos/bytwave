@@ -76,6 +76,21 @@ export const api = {
       keys: { id: string; mode: 'testnet' | 'production'; label: string | null; created_at: string }[];
     }>(`/binance/status/${userId}`),
 
+  positions: (userId: string) =>
+    http<
+      Array<{
+        symbol: string;
+        position_side: 'LONG' | 'SHORT' | 'BOTH';
+        qty: number;
+        entry_price: number;
+        mark_price: number;
+        unrealized_pnl: number;
+        leverage: number;
+        isolated: boolean;
+        notional: number;
+      }>
+    >(`/positions/${userId}`),
+
   getStrategy: (userId: string, symbol: string) =>
     http<{
       id: string;
