@@ -552,6 +552,12 @@ async function refreshAndPlaceTakeProfit(
   qty: number,
 ) {
   const tpPrice = takeProfitPrice(cfg, avgPrice, side);
+  // TP é uma ordem LIMIT no preço alvo. Quando o mercado atinge o preço,
+  // a ordem é casada e fecha a posição (em hedge mode, side oposto +
+  // positionSide=LONG/SHORT já fecha o lado certo).
+  // Usamos LIMIT em vez de TAKE_PROFIT_MARKET porque a Binance retorna
+  // -4120 ("use Algo Orders API") pra TAKE_PROFIT_MARKET em alguns casos
+  // — LIMIT é universalmente aceita e ainda paga maker fee.
   await placeAndRecordOrder({
     user_id: cfg.user_id,
     cycle_id,
@@ -560,10 +566,9 @@ async function refreshAndPlaceTakeProfit(
     symbol: cfg.symbol,
     side,
     role: 'TAKE_PROFIT',
-    type: 'TAKE_PROFIT_MARKET',
+    type: 'LIMIT',
     qty,
-    stopPrice: tpPrice,
-    closePosition: true,
+    price: tpPrice,
   });
 }
 
