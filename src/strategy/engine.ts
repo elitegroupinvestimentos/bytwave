@@ -287,6 +287,62 @@ async function advanceCycle(
   const refreshed: OrderRow[] = [];
   for (const o of orders) refreshed.push(await refreshOrderStatus(client, o));
 
+  // 1.5) RECONCILIAÇÃO: se o usuário fechou manualmente na Binance,
+  // a posição vai sumir mesmo com o ciclo aberto no DB. Detectamos isso
+  // comparando "tinha qty preenchida" no DB vs posição real na Binance.
+  const filledTotalQty = refreshed
+    .filter((o) => o.role === 'BASE' || o.role === 'SAFETY')
+    .reduce((s, o) => s + Number(o.filled_qty || 0), 0);
+
+  if (filledTotalQty > 0) {
+    const positions = await client.positions(cfg.symbol).catch(() => [] as any[]);
+    const sidePos = (positions as any[]).find((p) => p.positionSide === side);
+    const realQty = sidePos ? Math.abs(Number(sidePos.positionAmt ?? 0)) : 0;
+
+    if (realQty === 0) {
+      // Posição fechada externamente — limpa ordens órfãs + fecha ciclo no DB.
+      for (const o of refreshed) {
+        if (o.binance_order_id && o.status !== 'FILLED' && o.status !== 'CANCELED') {
+          await client.cancelOrder(cfg.symbol, o.binance_order_id).catch(() => undefined);
+          await updateOrder(o.id, { status: 'CANCELED' });
+        }
+      }
+
+      // PnL aproximado: usa mark/preço atual como preço de saída.
+      const markPrice = sidePos
+        ? Number(sidePos.markPrice ?? 0)
+        : await client.tickerPrice(cfg.symbol).catch(() => 0);
+      const fills = refreshed
+        .filter((o) => o.role === 'BASE' || o.role === 'SAFETY')
+        .filter((o) => o.filled_qty > 0 && o.avg_fill_price)
+        .map((o) => ({ price: Number(o.avg_fill_price), qty: Number(o.filled_qty) }));
+      const { avg, totalQty } = weightedAveragePrice(fills);
+      const approxPnl =
+        markPrice > 0 && avg > 0
+          ? side === 'LONG'
+            ? (markPrice - avg) * totalQty
+            : (avg - markPrice) * totalQty
+          : 0;
+
+      await updateCycle(cycle.id, {
+        status: 'closed',
+        closed_at: new Date().toISOString(),
+        avg_price: avg,
+        total_qty: totalQty,
+        realized_pnl_usdt: approxPnl,
+      });
+
+      await botLog({
+        level: 'info',
+        scope: 'engine',
+        user_id: cfg.user_id,
+        cycle_id: cycle.id,
+        message: `Ciclo ${side} fechado externamente na Binance. PnL aprox ${approxPnl.toFixed(2)} USDT (mark ${markPrice}, avg ${avg.toFixed(2)})`,
+      });
+      return;
+    }
+  }
+
   // 2) Calcula posição (BASE + SOs filled)
   const fills = refreshed
     .filter((o) => o.role === 'BASE' || o.role === 'SAFETY')
