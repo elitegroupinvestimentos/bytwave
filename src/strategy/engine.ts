@@ -433,28 +433,55 @@ async function advanceCycle(
     // 2.5) Dispara próximas SOs como MARKET se o preço cruzou o nível.
     await triggerSafetyOrders(cfg, cycle, side, client, filters, refreshed);
 
-    // 3) Ajusta o TAKE_PROFIT se preço médio mudou
-    const tp = refreshed.find((o) => o.role === 'TAKE_PROFIT');
-    const newTpPrice = takeProfitPrice(cfg, avg || 0, side);
-    if (avg > 0 && tp && tp.status !== 'FILLED') {
-      const tpPrice = Number(tp.stop_price ?? tp.price ?? 0);
-      const driftPct = tpPrice > 0 ? Math.abs(tpPrice - newTpPrice) / tpPrice : 1;
-      // Se drift > 0.05% recoloca o TP.
-      if (driftPct > 0.0005) {
+    // 3) TP: cria se não existe ou recoloca se preço médio mudou
+    const tpActive = refreshed.find(
+      (o) => o.role === 'TAKE_PROFIT' && o.status !== 'CANCELED' && o.status !== 'EXPIRED',
+    );
+    if (avg > 0 && totalQty > 0) {
+      if (!tpActive) {
+        // Não tem TP ativo (provavelmente abertura falhou ou TP foi
+        // cancelado). Cria um agora.
         try {
-          if (tp.binance_order_id) {
-            await client.cancelOrder(cfg.symbol, tp.binance_order_id).catch(() => undefined);
-            await updateOrder(tp.id, { status: 'CANCELED' });
-          }
           await refreshAndPlaceTakeProfit(cfg, cycle.id, side, client, filters, avg, totalQty);
+          await botLog({
+            level: 'info',
+            scope: 'engine',
+            user_id: cfg.user_id,
+            cycle_id: cycle.id,
+            message: `TP criado retroativamente em ${takeProfitPrice(cfg, avg, side).toFixed(2)}`,
+          });
         } catch (err: any) {
           await botLog({
             level: 'warn',
             scope: 'engine',
             user_id: cfg.user_id,
             cycle_id: cycle.id,
-            message: `Falha ao reposicionar TP: ${err.message}`,
+            message: `Falha ao criar TP: ${err.message}`,
           });
+        }
+      } else if (tpActive.status !== 'FILLED') {
+        const newTpPrice = takeProfitPrice(cfg, avg, side);
+        const tpPrice = Number(tpActive.stop_price ?? tpActive.price ?? 0);
+        const driftPct = tpPrice > 0 ? Math.abs(tpPrice - newTpPrice) / tpPrice : 1;
+        // Se drift > 0.05% recoloca o TP.
+        if (driftPct > 0.0005) {
+          try {
+            if (tpActive.binance_order_id) {
+              await client
+                .cancelOrder(cfg.symbol, tpActive.binance_order_id)
+                .catch(() => undefined);
+              await updateOrder(tpActive.id, { status: 'CANCELED' });
+            }
+            await refreshAndPlaceTakeProfit(cfg, cycle.id, side, client, filters, avg, totalQty);
+          } catch (err: any) {
+            await botLog({
+              level: 'warn',
+              scope: 'engine',
+              user_id: cfg.user_id,
+              cycle_id: cycle.id,
+              message: `Falha ao reposicionar TP: ${err.message}`,
+            });
+          }
         }
       }
     }
