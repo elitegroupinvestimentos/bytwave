@@ -2,7 +2,6 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   Settings,
   Key,
-  Calculator,
   Save,
   Eye,
   EyeOff,
@@ -10,7 +9,9 @@ import {
   AlertTriangle,
   Shield,
   Flame,
-  Sparkles,
+  HelpCircle,
+  Wallet,
+  RefreshCw,
 } from 'lucide-react';
 import { DashboardLayout } from '../components/dashboard/DashboardLayout';
 import { ApiError, api } from '../api/client';
@@ -20,13 +21,13 @@ import {
   computeParams,
   validateBanca,
   validateParams,
+  MIN_BANCA_USDT,
   type RiskMode,
 } from '../lib/management';
-import { ManagementExplanation } from '../components/config/ManagementExplanation';
+import { HowItWorksModal } from '../components/config/HowItWorksModal';
 
-const STORAGE_KEY = 'bytwave:config:calculator';
+const STORAGE_KEY = 'bytwave:config:mode';
 const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT', 'DOGEUSDT'];
-const PREVIEW_BANCAS = [50, 100, 1000, 5000];
 
 export default function Config() {
   const session = useSession();
@@ -34,11 +35,13 @@ export default function Config() {
   const userId = session.user_id;
 
   const [symbol, setSymbol] = useState('BTCUSDT');
-  const [banca, setBanca] = useState<number>(1000);
+  const [banca, setBanca] = useState<number>(0);
   const [mode, setMode] = useState<RiskMode>('agressivo');
   const [loadingCfg, setLoadingCfg] = useState(true);
   const [savingCfg, setSavingCfg] = useState(false);
   const [cfgFeedback, setCfgFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [loadingBalance, setLoadingBalance] = useState(false);
 
   // Binance keys form
   const [apiKey, setApiKey] = useState('');
@@ -69,14 +72,13 @@ export default function Config() {
     };
   }, [userId]);
 
-  // Hidrata: 1) localStorage 2) última estratégia salva (capital_usdt fica na banca)
+  // Carrega: 1) localStorage (modo + ativo) 2) estratégia salva (ativo)
   useEffect(() => {
     let alive = true;
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const v = JSON.parse(raw);
-        if (typeof v.banca === 'number') setBanca(v.banca);
         if (v.mode === 'conservador' || v.mode === 'agressivo') setMode(v.mode);
         if (typeof v.symbol === 'string') setSymbol(v.symbol);
       }
@@ -95,12 +97,7 @@ export default function Config() {
         const running = list.find((s) => s.status === 'running');
         const target = running?.symbol ?? list[0].symbol;
         const data: any = await api.getStrategy(userId, target);
-        if (alive) {
-          setSymbol(data.symbol ?? 'BTCUSDT');
-          if (typeof data.capital_usdt === 'number' && data.capital_usdt > 0) {
-            setBanca(data.capital_usdt);
-          }
-        }
+        if (alive) setSymbol(data.symbol ?? 'BTCUSDT');
       } catch {
         // ignora
       } finally {
@@ -113,14 +110,33 @@ export default function Config() {
     };
   }, [userId]);
 
-  // Persiste localStorage
+  // Persiste só modo + ativo (banca é auto da Binance)
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ banca, mode, symbol }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode, symbol }));
     } catch {
       // ignore
     }
-  }, [banca, mode, symbol]);
+  }, [mode, symbol]);
+
+  // Auto-fetch banca da Binance quando conexão tá ok
+  async function fetchBalance() {
+    if (!binStatus?.connected) return;
+    setLoadingBalance(true);
+    try {
+      const r = await api.testBinance(userId);
+      setBanca(Number(r.total ?? 0));
+    } catch {
+      // ignora — usa fallback
+    } finally {
+      setLoadingBalance(false);
+    }
+  }
+
+  useEffect(() => {
+    if (binStatus?.connected) fetchBalance();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [binStatus?.connected]);
 
   const bancaCheck = useMemo(() => validateBanca(banca), [banca]);
   const paramsCheck = useMemo(() => validateParams(params), [params]);
@@ -216,19 +232,24 @@ export default function Config() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Calculator */}
+        {/* Modalidade */}
         <form
           onSubmit={saveStrategy}
           className="rounded-2xl border border-border bg-card/40 p-6 space-y-5"
         >
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Calculator className="w-4 h-4 text-primary" />
-              Gerenciamento automático
+              <Settings className="w-4 h-4 text-primary" />
+              Modalidade do bot
             </div>
-            <span className="text-[10px] font-mono px-2 py-1 rounded-md border border-primary/30 bg-primary/5 text-primary">
-              Auto-calc
-            </span>
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              className="flex items-center gap-1.5 text-[11px] font-mono px-2.5 py-1 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 transition-colors"
+            >
+              <HelpCircle className="w-3 h-3" />
+              Como funciona
+            </button>
           </div>
 
           {/* Symbol */}
@@ -260,93 +281,64 @@ export default function Config() {
             </div>
           </div>
 
-          {/* Banca */}
-          <div>
-            <label className="block text-[10px] font-display font-semibold tracking-[0.2em] uppercase text-muted-foreground mb-1.5">
-              Valor da banca (USDT)
-            </label>
-            <input
-              type="number"
-              step={1}
-              min={0}
-              value={banca}
-              onChange={(e) => setBanca(Number(e.target.value))}
-              placeholder="1000"
-              className="w-full bg-secondary/30 border border-border rounded-xl px-3 py-2.5 outline-none focus:border-primary/50 transition-colors text-sm font-mono"
-            />
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {PREVIEW_BANCAS.map((b) => (
-                <button
-                  key={b}
-                  type="button"
-                  onClick={() => setBanca(b)}
-                  className={`text-[10px] font-mono px-2 py-1 rounded-md border transition-colors ${
-                    banca === b
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border text-muted-foreground hover:border-primary/40'
-                  }`}
-                >
-                  ${b}
-                </button>
-              ))}
+          {/* Banca auto-detectada */}
+          <div className="rounded-xl border border-border bg-secondary/20 p-4">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="flex items-center gap-2 text-[10px] font-display font-semibold tracking-[0.2em] uppercase text-muted-foreground">
+                <Wallet className="w-3.5 h-3.5 text-primary" />
+                Banca detectada (Binance)
+              </div>
+              <button
+                type="button"
+                onClick={fetchBalance}
+                disabled={!binStatus?.connected || loadingBalance}
+                className="text-[10px] text-muted-foreground hover:text-primary transition-colors disabled:opacity-40 flex items-center gap-1"
+              >
+                <RefreshCw className={`w-3 h-3 ${loadingBalance ? 'animate-spin' : ''}`} />
+                Atualizar
+              </button>
             </div>
-            {!bancaCheck.ok && banca > 0 && (
-              <p className="mt-2 text-[11px] text-yellow-300 flex items-center gap-1.5">
+            <div className="text-2xl font-mono font-semibold text-foreground">
+              ${banca.toFixed(2)} <span className="text-xs text-muted-foreground">USDT</span>
+            </div>
+            {!binStatus?.connected ? (
+              <p className="mt-1 text-[11px] text-yellow-300 flex items-center gap-1.5">
                 <AlertTriangle className="w-3 h-3" />
-                {bancaCheck.msg}
+                Conecte a Binance pra detectar a banca automaticamente.
+              </p>
+            ) : !bancaCheck.ok ? (
+              <p className="mt-1 text-[11px] text-yellow-300 flex items-center gap-1.5">
+                <AlertTriangle className="w-3 h-3" />
+                Banca abaixo do mínimo (${MIN_BANCA_USDT} USDT). Deposite mais saldo na Binance.
+              </p>
+            ) : (
+              <p className="mt-1 text-[11px] text-muted-foreground/70">
+                O sistema usa esse valor pra dimensionar todas as ordens.
               </p>
             )}
           </div>
 
-          {/* Mode */}
-          <div>
-            <label className="block text-[10px] font-display font-semibold tracking-[0.2em] uppercase text-muted-foreground mb-1.5">
-              Modo de risco
+          {/* Mode cards (sem números) */}
+          <div className="space-y-2">
+            <label className="block text-[10px] font-display font-semibold tracking-[0.2em] uppercase text-muted-foreground">
+              Escolha a modalidade
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              <ModeButton
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <ModeCard
                 active={mode === 'conservador'}
                 onClick={() => setMode('conservador')}
-                color="green"
-                icon={<Shield className="w-4 h-4" />}
-                title="Conservador"
-                subtitle="menor risco · sobrevivência"
+                kind="conservador"
               />
-              <ModeButton
+              <ModeCard
                 active={mode === 'agressivo'}
                 onClick={() => setMode('agressivo')}
-                color="red"
-                icon={<Flame className="w-4 h-4" />}
-                title="Agressivo"
-                subtitle="maior lucro · maior risco"
+                kind="agressivo"
               />
             </div>
-          </div>
-
-          {/* Preview cards */}
-          <div className="rounded-xl border border-border bg-secondary/20 p-4 space-y-3">
-            <div className="flex items-center gap-2 text-[10px] font-display font-semibold tracking-[0.2em] uppercase text-muted-foreground">
-              <Sparkles className="w-3.5 h-3.5 text-primary" />
-              Parâmetros calculados
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <Stat label="Alavancagem" value={`${params.leverage}x`} />
-              <Stat label="Target Profit" value={`${params.target_profit_pct}%`} />
-              <Stat label="Base Order" value={`$${params.base_order_usdt}`} highlight />
-              <Stat label="1ª Safety" value={`$${params.first_safety_usdt}`} highlight />
-              <Stat label="Max Safety" value={`${params.max_safety_orders}`} />
-              <Stat label="Distância" value={`${params.initial_distance_pct}%`} />
-              <Stat label="Step Scale" value={`${params.step_scale}`} />
-              <Stat label="Volume Scale" value={`${params.volume_scale}`} />
-            </div>
-            <p className="text-[11px] text-muted-foreground/80 leading-relaxed">
-              Gerenciamento calculado automaticamente proporcional à sua banca.
-              BO é tratado como margem — notional efetivo na corretora ≈ BO × alavancagem.
-            </p>
           </div>
 
           {!paramsCheck.ok && bancaCheck.ok && (
-            <Feedback ok={false} msg={paramsCheck.msg ?? 'Parâmetros inválidos.'} />
+            <Feedback ok={false} msg={paramsCheck.msg ?? 'Parâmetros inválidos pra esse ativo.'} />
           )}
           {cfgFeedback && <Feedback ok={cfgFeedback.ok} msg={cfgFeedback.msg} />}
 
@@ -356,9 +348,11 @@ export default function Config() {
             className="w-full h-11 rounded-full bg-primary text-primary-foreground font-display font-semibold text-sm tracking-wider hover:scale-[1.01] transition-all disabled:opacity-60 disabled:cursor-not-allowed box-glow flex items-center justify-center gap-2"
           >
             <Save className="w-4 h-4" />
-            {savingCfg ? 'Salvando...' : 'Salvar gerenciamento'}
+            {savingCfg ? 'Aplicando...' : 'Aplicar modalidade'}
           </button>
         </form>
+
+        <HowItWorksModal open={helpOpen} onClose={() => setHelpOpen(false)} />
 
         {/* Binance keys */}
         <form
@@ -423,9 +417,6 @@ export default function Config() {
         </form>
       </div>
 
-      {/* Explicação do gerenciamento */}
-      <ManagementExplanation banca={banca} mode={mode} />
-
       {/* Atalhos */}
       <div className="rounded-2xl border border-border bg-card/40 p-6">
         <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
@@ -448,63 +439,59 @@ export default function Config() {
   );
 }
 
-function ModeButton({
+function ModeCard({
   active,
   onClick,
-  color,
-  icon,
-  title,
-  subtitle,
+  kind,
 }: {
   active: boolean;
   onClick: () => void;
-  color: 'green' | 'red';
-  icon: React.ReactNode;
-  title: string;
-  subtitle: string;
+  kind: RiskMode;
 }) {
-  const cls = active
-    ? color === 'green'
-      ? 'border-accent/60 bg-accent/10 text-accent'
-      : 'border-red-500/60 bg-red-500/10 text-red-300'
-    : 'border-border bg-secondary/20 text-muted-foreground hover:border-primary/40';
+  const isCons = kind === 'conservador';
+  const title = isCons ? 'Conservador' : 'Agressivo';
+  const subtitle = isCons
+    ? 'Menor risco · sobrevivência da conta. Crescimento gradual da posição.'
+    : 'Maior potencial de lucro · maior risco. Crescimento rápido da posição.';
+  const tag = isCons ? 'SAFE MODE' : 'EXTREME RISK';
+  const Icon = isCons ? Shield : Flame;
+
+  const activeBorder = isCons ? 'border-accent bg-accent/10' : 'border-red-500 bg-red-500/10';
+  const activeText = isCons ? 'text-accent' : 'text-red-300';
+  const tagCls = isCons
+    ? 'border-accent/40 text-accent'
+    : 'border-red-500/40 text-red-300';
+
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-xl border px-3 py-3 text-left transition-all ${cls}`}
-    >
-      <div className="flex items-center gap-2 text-sm font-semibold">
-        {icon}
-        {title}
-      </div>
-      <div className="text-[11px] mt-0.5 text-muted-foreground/80">{subtitle}</div>
-    </button>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  highlight,
-}: {
-  label: string;
-  value: string;
-  highlight?: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-lg border px-3 py-2 ${
-        highlight ? 'border-primary/40 bg-primary/5' : 'border-border bg-card/40'
+      className={`group relative rounded-xl border-2 p-4 text-left transition-all ${
+        active
+          ? `${activeBorder} shadow-[0_0_0_1px_rgba(255,255,255,0.05)]`
+          : 'border-border bg-secondary/20 hover:border-primary/40'
       }`}
     >
-      <div className="text-[9px] font-display font-semibold tracking-[0.2em] uppercase text-muted-foreground/70">
-        {label}
+      <div className="flex items-center justify-between gap-2">
+        <div className={`flex items-center gap-2 text-sm font-semibold ${active ? activeText : 'text-foreground'}`}>
+          <Icon className="w-4 h-4" />
+          {title}
+        </div>
+        <span
+          className={`text-[9px] font-display font-semibold tracking-[0.2em] uppercase border rounded-full px-2 py-0.5 ${
+            active ? tagCls : 'border-border text-muted-foreground'
+          }`}
+        >
+          {tag}
+        </span>
       </div>
-      <div className={`text-sm font-mono ${highlight ? 'text-primary' : 'text-foreground'}`}>
-        {value}
-      </div>
-    </div>
+      <p className="text-[11px] text-muted-foreground/80 mt-2 leading-relaxed">{subtitle}</p>
+      {active && (
+        <div className={`absolute top-2 right-2 ${activeText}`}>
+          <CheckCircle2 className="w-3.5 h-3.5" />
+        </div>
+      )}
+    </button>
   );
 }
 
