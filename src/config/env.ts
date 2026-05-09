@@ -21,8 +21,13 @@ const schema = z.object({
   // ── Tokens ────────────────────────────────────────────
   // Tokens grátis ao criar uma conta nova (0 desliga o grant).
   INITIAL_TOKEN_GRANT: z.coerce.number().int().nonnegative().default(100),
-  // Tokens cobrados por ciclo aberto (BASE + SOs + TP). 0 desliga a cobrança.
+  // Saldo MÍNIMO de tokens para o bot aceitar abrir um ciclo (não deduz aqui).
+  // A cobrança real acontece no fechamento, baseada no lucro.
   TOKENS_PER_CYCLE: z.coerce.number().int().nonnegative().default(1),
+  // Modelo de cobrança: 1 token = N USDT de LUCRO realizado.
+  // Se TOKEN_USDT_RATIO=2 e ciclo lucrar $5 → debita ceil(5/2)=3 tokens.
+  // Ciclos com prejuízo NÃO são cobrados.
+  TOKEN_USDT_RATIO: z.coerce.number().positive().default(2),
   // Limite a partir do qual mostramos alerta de "tokens acabando".
   LOW_TOKENS_THRESHOLD: z.coerce.number().int().nonnegative().default(10),
 

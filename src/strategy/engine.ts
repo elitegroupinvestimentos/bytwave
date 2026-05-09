@@ -133,38 +133,60 @@ async function processSide(
 // (LONG + SHORT no mesmo tick) não façam consumo duplicado / saldo negativo.
 const userPausedNoToken = new Set<string>();
 
-async function chargeForCycleOpen(cfg: StrategyConfig, side: CycleSide): Promise<boolean> {
+// Pré-check para abrir ciclo: NÃO deduz tokens (cobrança é no fechamento).
+// Só verifica que o usuário tem o mínimo de saldo configurado.
+async function chargeForCycleOpen(cfg: StrategyConfig, _side: CycleSide): Promise<boolean> {
   if (env.TOKENS_PER_CYCLE <= 0) return true;
 
-  // Pré-check leve para evitar RPC quando obviamente sem saldo (cheap e idempotente).
   const balance = await getTokenBalance(cfg.user_id).catch(() => 0);
   if (balance < env.TOKENS_PER_CYCLE) {
     await onInsufficientTokens(cfg, balance);
     return false;
   }
+  userPausedNoToken.delete(cfg.user_id);
+  return true;
+}
+
+// Cobrança no fechamento do ciclo, proporcional ao lucro:
+// 1 token = TOKEN_USDT_RATIO USDT de lucro. Ciclos com prejuízo não pagam.
+// Se o usuário tiver menos saldo do que o custo, debita o que tiver (parcial).
+async function chargeForCycleProfit(
+  cfg: StrategyConfig,
+  cycleId: string,
+  pnlUsdt: number,
+): Promise<void> {
+  if (pnlUsdt <= 0) return;
+  if (env.TOKEN_USDT_RATIO <= 0) return;
+
+  const cost = Math.ceil(pnlUsdt / env.TOKEN_USDT_RATIO);
+  if (cost <= 0) return;
+
+  const balance = await getTokenBalance(cfg.user_id).catch(() => 0);
+  const toCharge = Math.min(cost, balance);
+  if (toCharge <= 0) return;
 
   const result = await consumeTokens({
     user_id: cfg.user_id,
-    amount: env.TOKENS_PER_CYCLE,
-    reason: 'cycle_open',
-    metadata: { symbol: cfg.symbol, side, config_id: cfg.id },
-  }).catch((err) => ({ success: false, balance_after: balance, message: String(err) }));
-
-  if (!result.success) {
-    await onInsufficientTokens(cfg, result.balance_after);
-    return false;
-  }
-
-  // Saiu de "paused-no-token" se estava marcado
-  userPausedNoToken.delete(cfg.user_id);
+    amount: toCharge,
+    reason: 'cycle_profit',
+    cycle_id: cycleId,
+    metadata: {
+      pnl_usdt: pnlUsdt,
+      ratio: env.TOKEN_USDT_RATIO,
+      full_cost: cost,
+      partial: toCharge < cost,
+    },
+  }).catch(() => ({ success: false, balance_after: balance, message: 'rpc_error' }));
 
   await botLog({
-    level: 'debug',
+    level: result.success ? 'info' : 'warn',
     scope: 'tokens',
     user_id: cfg.user_id,
-    message: `Cobrado ${env.TOKENS_PER_CYCLE} token(s) por ciclo ${side} ${cfg.symbol}. Saldo: ${result.balance_after}`,
+    cycle_id: cycleId,
+    message: `Cobrado ${toCharge}/${cost} token(s) por lucro de $${pnlUsdt.toFixed(
+      2,
+    )} (1 token = $${env.TOKEN_USDT_RATIO}). Saldo: ${result.balance_after}`,
   });
-  return true;
 }
 
 async function onInsufficientTokens(cfg: StrategyConfig, balance: number) {
@@ -339,6 +361,9 @@ async function advanceCycle(
         realized_pnl_usdt: approxPnl,
       });
 
+      // Cobra tokens proporcional ao lucro (se houver)
+      await chargeForCycleProfit(cfg, cycle.id, approxPnl);
+
       // AUTO-PAUSE: usuário fechou manualmente → provavelmente NÃO quer
       // que o bot abra ciclo novo automaticamente. Pausa a config.
       // Se quiser voltar a operar, basta clicar em Iniciar.
@@ -432,6 +457,9 @@ async function advanceCycle(
       closed_at: new Date().toISOString(),
       realized_pnl_usdt: pnl,
     });
+
+    // Cobra tokens proporcional ao lucro (TP fechou no positivo)
+    await chargeForCycleProfit(cfg, cycle.id, pnl);
 
     await botLog({
       level: 'info',
