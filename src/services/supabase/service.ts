@@ -184,6 +184,8 @@ export async function listConfigsToProcess(): Promise<StrategyConfig[]> {
 
 // ── Cycles ────────────────────────────────────────────────────────────────────
 export async function getOpenCycle(user_id: string, symbol: string, side: CycleSide) {
+  // limit(1) + order pra ser robusto caso haja duplicata histórica
+  // (pega o mais recente em vez de quebrar com erro de "multiple rows").
   const { data, error } = await supabase
     .from('cycles')
     .select('*')
@@ -191,9 +193,10 @@ export async function getOpenCycle(user_id: string, symbol: string, side: CycleS
     .eq('symbol', symbol)
     .eq('side', side)
     .eq('status', 'open')
-    .maybeSingle();
+    .order('opened_at', { ascending: false })
+    .limit(1);
   if (error) throw error;
-  return (data as CycleRow) ?? null;
+  return ((data ?? [])[0] as CycleRow) ?? null;
 }
 
 export async function createCycle(input: Pick<CycleRow, 'user_id' | 'config_id' | 'symbol' | 'side'>) {
