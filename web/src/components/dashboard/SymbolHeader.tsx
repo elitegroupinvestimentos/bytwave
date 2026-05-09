@@ -1,4 +1,4 @@
-import { Activity, Pause, Play, RefreshCw } from 'lucide-react';
+import { Activity, Pause, Play } from 'lucide-react';
 
 interface SymbolHeaderProps {
   symbol: string;
@@ -61,13 +61,6 @@ export function SymbolHeader({
             status === 'paused'  ? 'bg-yellow-400' : 'bg-muted-foreground'
           }`} />
           {status === 'running' ? 'Ativo' : status === 'paused' ? 'Pausado' : 'Parado'}
-        </button>
-        <button
-          onClick={onRefresh}
-          className="flex items-center gap-2 h-10 px-4 rounded-full border border-border text-sm text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          Atualizar
         </button>
       </div>
     </div>
