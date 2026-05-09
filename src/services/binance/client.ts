@@ -200,6 +200,20 @@ export class BinanceFuturesClient {
     const positions: any[] = acc.positions ?? [];
     return symbol ? positions.filter((p) => p.symbol === symbol) : positions;
   }
+
+  /**
+   * Histórico de income (PnL realizado, comissões, funding etc).
+   * Usado pra reconciliar PnL real do ciclo após fechamento.
+   */
+  async income(opts: {
+    symbol?: string;
+    incomeType?: 'REALIZED_PNL' | 'COMMISSION' | 'FUNDING_FEE';
+    startTime?: number;
+    endTime?: number;
+    limit?: number;
+  } = {}): Promise<Array<{ symbol: string; incomeType: string; income: string; time: number; tradeId?: number }>> {
+    return this.signedRequest('GET', '/fapi/v1/income', opts);
+  }
 }
 
 // ─── Erros normalizados ──────────────────────────────────────────────────────

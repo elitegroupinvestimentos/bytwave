@@ -337,21 +337,46 @@ async function advanceCycle(
         }
       }
 
-      // PnL aproximado: usa mark/preço atual como preço de saída.
-      const markPrice = sidePos
-        ? Number(sidePos.markPrice ?? 0)
-        : await client.tickerPrice(cfg.symbol).catch(() => 0);
       const fills = refreshed
         .filter((o) => o.role === 'BASE' || o.role === 'SAFETY')
         .filter((o) => o.filled_qty > 0 && o.avg_fill_price)
         .map((o) => ({ price: Number(o.avg_fill_price), qty: Number(o.filled_qty) }));
       const { avg, totalQty } = weightedAveragePrice(fills);
-      const approxPnl =
-        markPrice > 0 && avg > 0
-          ? side === 'LONG'
-            ? (markPrice - avg) * totalQty
-            : (avg - markPrice) * totalQty
-          : 0;
+
+      // PnL: tenta REAL via /fapi/v1/income (Binance soma o que realmente
+      // foi creditado/debitado). Filtramos pelo período do ciclo + symbol.
+      let approxPnl = 0;
+      let pnlSource = 'unknown';
+      try {
+        const start = new Date(cycle.opened_at).getTime() - 1000;
+        const incomes = await client.income({
+          symbol: cfg.symbol,
+          incomeType: 'REALIZED_PNL',
+          startTime: start,
+          limit: 100,
+        });
+        if (incomes && incomes.length > 0) {
+          approxPnl = incomes.reduce((s, r) => s + Number(r.income ?? 0), 0);
+          pnlSource = 'binance_income';
+        }
+      } catch {
+        // ignora — cai no fallback
+      }
+
+      // Fallback: se não conseguiu pelo income, calcula com mark/ticker
+      if (pnlSource === 'unknown') {
+        let markPrice = sidePos ? Number(sidePos.markPrice ?? 0) : 0;
+        if (markPrice <= 0) {
+          markPrice = await client.tickerPrice(cfg.symbol).catch(() => 0);
+        }
+        approxPnl =
+          markPrice > 0 && avg > 0
+            ? side === 'LONG'
+              ? (markPrice - avg) * totalQty
+              : (avg - markPrice) * totalQty
+            : 0;
+        pnlSource = 'mark_price_estimate';
+      }
 
       await updateCycle(cycle.id, {
         status: 'closed',
@@ -376,7 +401,7 @@ async function advanceCycle(
         scope: 'engine',
         user_id: cfg.user_id,
         cycle_id: cycle.id,
-        message: `Ciclo ${side} fechado externamente — bot pausado. PnL aprox ${approxPnl.toFixed(2)} USDT (mark ${markPrice}, avg ${avg.toFixed(2)})`,
+        message: `Ciclo ${side} fechado externamente — bot pausado. PnL ${approxPnl.toFixed(2)} USDT (fonte: ${pnlSource}, avg ${avg.toFixed(2)})`,
       });
       return;
     }
