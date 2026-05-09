@@ -410,7 +410,14 @@ export default function Dashboard() {
       </div>
 
       {/* Linha 4: Posições abertas (consultadas direto da Binance) */}
-      <OpenPositionsTable positions={positions} />
+      <OpenPositionsTable
+        positions={positions}
+        userId={userId}
+        onClosed={() => {
+          // Refetch imediato ao fechar pra UI atualizar sem esperar polling
+          api.positions(userId).then(setPositions).catch(() => undefined);
+        }}
+      />
 
       {/* Linha 5: Banca + Histórico */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

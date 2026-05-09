@@ -220,6 +220,67 @@ router.get(
   }),
 );
 
+// Fechar uma ou várias posições. Sem symbol/side = fecha tudo do usuário.
+const closePositionsSchema = z.object({
+  user_id: z.string().uuid(),
+  symbol: z.string().optional(),
+  position_side: z.enum(['LONG', 'SHORT']).optional(),
+});
+
+router.post(
+  '/positions/close',
+  requireAuth,
+  requireSelf((req) => req.body?.user_id),
+  ah(async (req, res) => {
+    const body = closePositionsSchema.parse(req.body);
+
+    let client;
+    try {
+      client = await getBinanceClient(body.user_id);
+    } catch (err: any) {
+      return res.status(400).json({ error: 'no_keys', message: err.message });
+    }
+
+    const all = await client.positions(body.symbol);
+    const targets = (all as any[]).filter((p) => {
+      const amt = Math.abs(Number(p.positionAmt ?? 0));
+      if (amt === 0) return false;
+      if (body.symbol && p.symbol !== body.symbol.toUpperCase()) return false;
+      if (body.position_side && p.positionSide !== body.position_side) return false;
+      return true;
+    });
+
+    const closed: any[] = [];
+    const errors: any[] = [];
+    for (const p of targets) {
+      const amt = Number(p.positionAmt);
+      const isLong = amt > 0 || p.positionSide === 'LONG';
+      try {
+        await client.placeOrder({
+          symbol: p.symbol,
+          side: isLong ? 'SELL' : 'BUY',
+          positionSide: p.positionSide,
+          type: 'MARKET',
+          quantity: Math.abs(amt),
+        });
+        closed.push({ symbol: p.symbol, side: p.positionSide, qty: Math.abs(amt) });
+      } catch (e: any) {
+        errors.push({ symbol: p.symbol, side: p.positionSide, err: e.message });
+      }
+    }
+
+    await botLog({
+      level: 'info',
+      scope: 'api',
+      user_id: body.user_id,
+      message: `Usuário fechou ${closed.length} posição(ões) (${body.symbol ?? 'todas'} ${body.position_side ?? ''})`,
+      data: { closed, errors },
+    });
+
+    res.json({ ok: true, closed, errors });
+  }),
+);
+
 // Posições abertas na Binance (qty != 0). Devolve symbol, lado, qty,
 // preço de entrada, mark price, alavancagem, PnL não realizado.
 router.get(

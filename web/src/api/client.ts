@@ -91,6 +91,17 @@ export const api = {
       }>
     >(`/positions/${userId}`),
 
+  closePositions: (input: {
+    user_id: string;
+    symbol?: string;
+    position_side?: 'LONG' | 'SHORT';
+  }) =>
+    http<{
+      ok: boolean;
+      closed: { symbol: string; side: string; qty: number }[];
+      errors: { symbol: string; side: string; err: string }[];
+    }>('/positions/close', { method: 'POST', body: JSON.stringify(input) }),
+
   getStrategy: (userId: string, symbol: string) =>
     http<{
       id: string;
