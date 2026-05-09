@@ -1,7 +1,8 @@
 # Bytwave backend — sobrescreve as fases do nixpacks pra evitar `npm ci`.
+# --include=dev força instalar typescript (devDep) mesmo com NODE_ENV=production.
 
 [phases.install]
-cmds = ["npm install --no-audit --no-fund"]
+cmds = ["npm install --include=dev --no-audit --no-fund"]
 
 [phases.build]
 cmds = ["npm run build"]

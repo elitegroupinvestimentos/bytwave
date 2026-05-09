@@ -1,8 +1,9 @@
 # Bytwave web — sobrescreve as fases do nixpacks pra evitar `npm ci`
 # (o lockfile pode estar dessincronizado em projetos novos).
+# --include=dev força instalar typescript/vite (devDeps) com NODE_ENV=production.
 
 [phases.install]
-cmds = ["npm install --no-audit --no-fund"]
+cmds = ["npm install --include=dev --no-audit --no-fund"]
 
 [phases.build]
 cmds = ["npm run build"]
