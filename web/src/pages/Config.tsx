@@ -16,52 +16,8 @@ import { DashboardLayout } from '../components/dashboard/DashboardLayout';
 import { ApiError, api } from '../api/client';
 import { useSession } from '../hooks/useSession';
 import { Navigate } from 'react-router-dom';
-
-type RiskMode = 'conservador' | 'agressivo';
-
-interface ManagementParams {
-  leverage: number;
-  base_order_usdt: number;
-  first_safety_usdt: number;
-  max_safety_orders: number;
-  initial_distance_pct: number;
-  step_scale: number;
-  volume_scale: number;
-  target_profit_pct: number;
-}
-
-const BO_MIN = 0.2;
-const SO_MIN = 0.4;
-
-function round2(n: number): number {
-  return Number(n.toFixed(2));
-}
-
-function computeParams(banca: number, mode: RiskMode): ManagementParams {
-  const safe = Number.isFinite(banca) && banca > 0 ? banca : 0;
-  if (mode === 'conservador') {
-    return {
-      leverage: 10,
-      base_order_usdt: Math.max(BO_MIN, round2(safe * 0.003)),
-      first_safety_usdt: Math.max(SO_MIN, round2(safe * 0.006)),
-      max_safety_orders: 6,
-      initial_distance_pct: 0.8,
-      step_scale: 1.6,
-      volume_scale: 1.5,
-      target_profit_pct: 0.5,
-    };
-  }
-  return {
-    leverage: 12,
-    base_order_usdt: Math.max(BO_MIN, round2(safe * 0.004)),
-    first_safety_usdt: Math.max(SO_MIN, round2(safe * 0.008)),
-    max_safety_orders: 5,
-    initial_distance_pct: 0.6,
-    step_scale: 1.5,
-    volume_scale: 1.8,
-    target_profit_pct: 0.6,
-  };
-}
+import { computeParams, type RiskMode } from '../lib/management';
+import { ManagementExplanation } from '../components/config/ManagementExplanation';
 
 const STORAGE_KEY = 'bytwave:config:calculator';
 const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT', 'DOGEUSDT'];
@@ -444,6 +400,9 @@ export default function Config() {
           </button>
         </form>
       </div>
+
+      {/* Explicação do gerenciamento */}
+      <ManagementExplanation banca={banca} mode={mode} />
 
       {/* Atalhos */}
       <div className="rounded-2xl border border-border bg-card/40 p-6">
