@@ -34,17 +34,8 @@ interface ModePreset {
 }
 
 export const RISK_MODES: Record<RiskMode, ModePreset> = {
+  // Conservador = gerenciamento padrão (banca 1k → BO 4 / SO 8)
   conservador: {
-    leverage: 10,
-    boRatio: 0.003,
-    soRatio: 0.006,
-    max_safety_orders: 6,
-    initial_distance_pct: 0.8,
-    step_scale: 1.6,
-    volume_scale: 1.5,
-    target_profit_pct: 0.5,
-  },
-  agressivo: {
     leverage: 12,
     boRatio: 0.004,
     soRatio: 0.008,
@@ -53,6 +44,17 @@ export const RISK_MODES: Record<RiskMode, ModePreset> = {
     step_scale: 1.5,
     volume_scale: 1.8,
     target_profit_pct: 0.6,
+  },
+  // Agressivo = mais alavancagem, mais SOs, distâncias menores, TP maior
+  agressivo: {
+    leverage: 15,
+    boRatio: 0.006,
+    soRatio: 0.012,
+    max_safety_orders: 7,
+    initial_distance_pct: 0.5,
+    step_scale: 1.4,
+    volume_scale: 2.0,
+    target_profit_pct: 0.8,
   },
 };
 
