@@ -319,11 +319,15 @@ async function advanceCycle(
   // 1.5) RECONCILIAÇÃO: se o usuário fechou manualmente na Binance,
   // a posição vai sumir mesmo com o ciclo aberto no DB. Detectamos isso
   // comparando "tinha qty preenchida" no DB vs posição real na Binance.
+  // Também rodamos pra ciclos antigos sem fill (orfãos por falha na abertura).
   const filledTotalQty = refreshed
     .filter((o) => o.role === 'BASE' || o.role === 'SAFETY')
     .reduce((s, o) => s + Number(o.filled_qty || 0), 0);
 
-  if (filledTotalQty > 0) {
+  const ageMs = Date.now() - new Date(cycle.opened_at).getTime();
+  const isLikelyOrphan = filledTotalQty === 0 && ageMs > 30_000;
+
+  if (filledTotalQty > 0 || isLikelyOrphan) {
     const positions = await client.positions(cfg.symbol).catch(() => [] as any[]);
     const sidePos = (positions as any[]).find((p) => p.positionSide === side);
     const realQty = sidePos ? Math.abs(Number(sidePos.positionAmt ?? 0)) : 0;
