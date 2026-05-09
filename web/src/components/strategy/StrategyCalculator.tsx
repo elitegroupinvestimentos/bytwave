@@ -174,6 +174,17 @@ export function StrategyCalculator({ symbol, onSymbolChange, onSave, saving, fee
             <Info className="w-3 h-3 shrink-0 mt-0.5" />
             Gerenciamento calculado automaticamente proporcional à sua banca.
           </p>
+          {strategy.base_order_usdt < 50 && (
+            <div className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-[11px] text-yellow-200/90 flex items-start gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>
+                Atenção: a Binance Testnet exige <strong>$50 mínimo</strong> por
+                ordem para BTC/ETH. Sua Base Order de ${strategy.base_order_usdt.toFixed(2)}{' '}
+                será rejeitada nesses pares — aumente a banca para pelo menos{' '}
+                <strong>${(50 / 0.004).toFixed(0)}</strong> ou opere altcoins.
+              </span>
+            </div>
+          )}
         </motion.div>
       </AnimatePresence>
 

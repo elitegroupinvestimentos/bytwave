@@ -112,7 +112,7 @@ async function processSide(
     if (!(await chargeForCycleOpen(cfg, side))) return;
     if (!(await preTradeChecks(cfg, client))) return;
     await ensureAccountReady(cfg, client);
-    cycle = await openCycle(cfg, side, client, filters);
+    await openCycle(cfg, side, client, filters);
     return;
   }
 
@@ -262,8 +262,35 @@ async function openCycle(
   side: CycleSide,
   client: BinanceFuturesClient,
   filters: SymbolFilters,
-): Promise<CycleRow> {
+): Promise<CycleRow | null> {
   const refPrice = await client.tickerPrice(cfg.symbol);
+
+  // Validação ANTES de criar cycle row: a BO precisa atender o minNotional
+  // do par. Se não, auto-pausa (sem criar ciclo órfão) e avisa o usuário.
+  if (cfg.base_order_usdt < filters.minNotional) {
+    await setConfigStatus(cfg.id, 'paused').catch(() => undefined);
+    await botLog({
+      level: 'warn',
+      scope: 'engine',
+      user_id: cfg.user_id,
+      message: `Bot pausado: Base Order $${cfg.base_order_usdt} é menor que o mínimo de $${filters.minNotional} exigido pelo ${cfg.symbol}. Aumente a banca ou troque de par.`,
+      data: { bo: cfg.base_order_usdt, min_notional: filters.minNotional, symbol: cfg.symbol },
+    });
+    return null;
+  }
+
+  const baseQty = cfg.base_order_usdt / refPrice;
+  // Confere se a quantidade resultante atende o minQty do par
+  if (baseQty < filters.minQty) {
+    await setConfigStatus(cfg.id, 'paused').catch(() => undefined);
+    await botLog({
+      level: 'warn',
+      scope: 'engine',
+      user_id: cfg.user_id,
+      message: `Bot pausado: quantidade calculada (${baseQty.toFixed(8)}) está abaixo do mínimo (${filters.minQty}) do ${cfg.symbol}.`,
+    });
+    return null;
+  }
 
   const cycle = await createCycle({
     user_id: cfg.user_id,
@@ -273,7 +300,6 @@ async function openCycle(
   });
 
   // BASE order: MARKET com qty derivada do base_order_usdt
-  const baseQty = cfg.base_order_usdt / refPrice;
   await placeAndRecordOrder({
     user_id: cfg.user_id,
     cycle_id: cycle.id,
