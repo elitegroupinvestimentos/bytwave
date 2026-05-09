@@ -7,7 +7,7 @@ import {
   getOpenCycle,
   insertAccountSnapshot,
   listOrdersByCycle,
-  listRunningConfigs,
+  listConfigsToProcess,
   setConfigStatus,
   updateCycle,
   updateOrder,
@@ -38,7 +38,9 @@ async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T | null>
  * Para cada config processa LONG e SHORT.
  */
 export async function runTick(): Promise<void> {
-  const configs = await listRunningConfigs();
+  // Inclui configs running + configs com ciclos abertos (mesmo paused/stopped),
+  // pra reconciliação com Binance acontecer mesmo com bot pausado.
+  const configs = await listConfigsToProcess();
   if (!configs.length) return;
 
   for (const cfg of configs) {
@@ -104,7 +106,9 @@ async function processSide(
   let cycle = await getOpenCycle(cfg.user_id, cfg.symbol, side);
 
   if (!cycle) {
-    // ── Token gate ── primeiro tudo: sem tokens, NADA é enviado para a Binance.
+    // Sem ciclo aberto: só abre novo se config está RUNNING.
+    // Se estiver paused/stopped, não faz nada nesse lado.
+    if (cfg.status !== 'running') return;
     if (!(await chargeForCycleOpen(cfg, side))) return;
     if (!(await preTradeChecks(cfg, client))) return;
     await ensureAccountReady(cfg, client);
@@ -112,6 +116,9 @@ async function processSide(
     return;
   }
 
+  // Tem ciclo aberto: SEMPRE roda advanceCycle (mesmo com bot pausado/parado),
+  // pra reconciliar com a Binance. Se o usuário fechou manualmente, o
+  // ciclo é detectado e marcado como closed automaticamente.
   await advanceCycle(cfg, cycle, side, client, filters);
 }
 
@@ -362,34 +369,36 @@ async function advanceCycle(
     filled_safety_count: filledSO,
   });
 
-  // 2.5) Dispara próximas SOs como MARKET se o preço cruzou o nível.
-  // Estratégia "trigger on tick": evita ter N LIMITs pendentes — só o TP
-  // fica no book. A cada tick (~5s), checamos se a próxima SO da escada
-  // foi atingida; se sim, dispara MARKET imediato.
-  await triggerSafetyOrders(cfg, cycle, side, client, filters, refreshed);
+  // Ações ATIVAS (trigger SOs, recolocar TP) só rodam se bot estiver running.
+  // Se estiver paused/stopped, mantemos posição/ordem como estão e só
+  // reconciliamos quando algo fechar (manual ou TP).
+  if (cfg.status === 'running') {
+    // 2.5) Dispara próximas SOs como MARKET se o preço cruzou o nível.
+    await triggerSafetyOrders(cfg, cycle, side, client, filters, refreshed);
 
-  // 3) Ajusta o TAKE_PROFIT se preço médio mudou
-  const tp = refreshed.find((o) => o.role === 'TAKE_PROFIT');
-  const newTpPrice = takeProfitPrice(cfg, avg || 0, side);
-  if (avg > 0 && tp && tp.status !== 'FILLED') {
-    const tpPrice = Number(tp.stop_price ?? tp.price ?? 0);
-    const driftPct = tpPrice > 0 ? Math.abs(tpPrice - newTpPrice) / tpPrice : 1;
-    // Se drift > 0.05% recoloca o TP.
-    if (driftPct > 0.0005) {
-      try {
-        if (tp.binance_order_id) {
-          await client.cancelOrder(cfg.symbol, tp.binance_order_id).catch(() => undefined);
-          await updateOrder(tp.id, { status: 'CANCELED' });
+    // 3) Ajusta o TAKE_PROFIT se preço médio mudou
+    const tp = refreshed.find((o) => o.role === 'TAKE_PROFIT');
+    const newTpPrice = takeProfitPrice(cfg, avg || 0, side);
+    if (avg > 0 && tp && tp.status !== 'FILLED') {
+      const tpPrice = Number(tp.stop_price ?? tp.price ?? 0);
+      const driftPct = tpPrice > 0 ? Math.abs(tpPrice - newTpPrice) / tpPrice : 1;
+      // Se drift > 0.05% recoloca o TP.
+      if (driftPct > 0.0005) {
+        try {
+          if (tp.binance_order_id) {
+            await client.cancelOrder(cfg.symbol, tp.binance_order_id).catch(() => undefined);
+            await updateOrder(tp.id, { status: 'CANCELED' });
+          }
+          await refreshAndPlaceTakeProfit(cfg, cycle.id, side, client, filters, avg, totalQty);
+        } catch (err: any) {
+          await botLog({
+            level: 'warn',
+            scope: 'engine',
+            user_id: cfg.user_id,
+            cycle_id: cycle.id,
+            message: `Falha ao reposicionar TP: ${err.message}`,
+          });
         }
-        await refreshAndPlaceTakeProfit(cfg, cycle.id, side, client, filters, avg, totalQty);
-      } catch (err: any) {
-        await botLog({
-          level: 'warn',
-          scope: 'engine',
-          user_id: cfg.user_id,
-          cycle_id: cycle.id,
-          message: `Falha ao reposicionar TP: ${err.message}`,
-        });
       }
     }
   }

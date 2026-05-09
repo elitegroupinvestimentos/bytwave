@@ -154,6 +154,34 @@ export async function listRunningConfigs(): Promise<StrategyConfig[]> {
   return (data ?? []) as StrategyConfig[];
 }
 
+/**
+ * Configs que precisam ser processadas pelo worker:
+ *  - todas com status='running' (abre ciclos novos + processa abertos)
+ *  - todas que têm ciclo aberto, MESMO pausadas/paradas — pra reconciliar
+ *    com a Binance (se usuário fechou manual, marcar como closed).
+ */
+export async function listConfigsToProcess(): Promise<StrategyConfig[]> {
+  const [{ data: running, error: e1 }, { data: openCycles, error: e2 }] = await Promise.all([
+    supabase.from('strategy_configs').select('*').eq('status', 'running'),
+    supabase.from('cycles').select('config_id').eq('status', 'open'),
+  ]);
+  if (e1) throw e1;
+  if (e2) throw e2;
+
+  const ids = new Set<string>([
+    ...((running ?? []) as any[]).map((c) => c.id),
+    ...((openCycles ?? []) as any[]).map((c) => c.config_id),
+  ]);
+  if (ids.size === 0) return [];
+
+  const { data: all, error: e3 } = await supabase
+    .from('strategy_configs')
+    .select('*')
+    .in('id', Array.from(ids));
+  if (e3) throw e3;
+  return (all ?? []) as StrategyConfig[];
+}
+
 // ── Cycles ────────────────────────────────────────────────────────────────────
 export async function getOpenCycle(user_id: string, symbol: string, side: CycleSide) {
   const { data, error } = await supabase
