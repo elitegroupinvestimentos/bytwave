@@ -21,17 +21,17 @@ export function SymbolHeader({
 }: SymbolHeaderProps) {
   const positive = change24h >= 0;
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-      <div className="flex items-center gap-3 md:gap-4 min-w-0">
-        <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-primary/10 border border-primary/30 flex items-center justify-center shrink-0">
-          <Activity className="w-5 h-5 text-primary" />
+    <div className="flex items-center justify-between gap-3 md:gap-4">
+      <div className="flex items-center gap-2.5 md:gap-4 min-w-0 flex-1">
+        <div className="w-9 h-9 md:w-11 md:h-11 rounded-xl bg-primary/10 border border-primary/30 flex items-center justify-center shrink-0">
+          <Activity className="w-4 h-4 md:w-5 md:h-5 text-primary" />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2 md:gap-3 flex-wrap">
-            <h2 className="font-display font-bold text-lg md:text-xl tracking-tight">{symbol}</h2>
-            <span className="text-muted-foreground text-sm md:text-base">${formatPrice(price)}</span>
+            <h2 className="font-display font-bold text-base md:text-xl tracking-tight">{symbol}</h2>
+            <span className="text-muted-foreground text-xs md:text-base">${formatPrice(price)}</span>
           </div>
-          <div className="flex items-center gap-2 md:gap-3 text-xs md:text-sm flex-wrap">
+          <div className="flex items-center gap-2 md:gap-3 text-[11px] md:text-sm flex-wrap">
             <span className={positive ? 'text-accent' : 'text-red-400'}>
               {positive ? '+' : ''}
               {change24h.toFixed(2)}%
@@ -45,9 +45,7 @@ export function SymbolHeader({
         </div>
       </div>
 
-      <div className="flex items-center gap-2 shrink-0">
-        <StatusToggle status={status} onToggle={onToggle} />
-      </div>
+      <StatusToggle status={status} onToggle={onToggle} />
     </div>
   );
 }
@@ -86,11 +84,11 @@ function StatusToggle({
 
   const labelClass =
     isRunning || isPaused
-      ? 'text-[11px] font-display font-bold tracking-[0.18em] uppercase text-black/85 select-none'
-      : 'text-[11px] font-display font-bold tracking-[0.18em] uppercase text-muted-foreground select-none';
+      ? 'text-[9px] font-display font-bold tracking-[0.15em] uppercase text-black/85 select-none'
+      : 'text-[9px] font-display font-bold tracking-[0.15em] uppercase text-muted-foreground select-none';
 
   const knob = (
-    <span className="w-8 h-8 rounded-full bg-black/85 shrink-0 transition-all" />
+    <span className="w-5 h-5 rounded-full bg-black/85 shrink-0 transition-all" />
   );
   const labelNode = <span className={`flex-1 text-center px-1 ${labelClass}`}>{label}</span>;
 
@@ -98,7 +96,7 @@ function StatusToggle({
     <button
       onClick={onToggle}
       type="button"
-      className={`flex items-center gap-1 w-[120px] h-10 rounded-full p-1 transition-colors ${bgClass}`}
+      className={`flex items-center gap-0.5 w-[88px] h-7 rounded-full p-1 shrink-0 transition-colors ${bgClass}`}
       title={`Clique para ${isRunning ? 'pausar' : 'iniciar'}`}
     >
       {isRunning ? (
