@@ -272,8 +272,8 @@ async function openCycle(
     side,
   });
 
-  // BASE order: MARKET com qty derivada do base_order_usdt
-  const baseQty = cfg.base_order_usdt / refPrice;
+  // BASE order: BO é tratado como MARGEM. Notional = BO * leverage.
+  const baseQty = (cfg.base_order_usdt * cfg.leverage) / refPrice;
   await placeAndRecordOrder({
     user_id: cfg.user_id,
     cycle_id: cycle.id,

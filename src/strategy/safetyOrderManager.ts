@@ -30,7 +30,8 @@ export function buildSafetyLadder(
     cumulativePct += stepPct;
     const directional = side === 'LONG' ? -cumulativePct : cumulativePct;
     const price = entryPrice * (1 + directional / 100);
-    const qty = soVolume / price;
+    // soVolume é tratado como MARGEM. Notional = soVolume * leverage.
+    const qty = (soVolume * cfg.leverage) / price;
 
     ladder.push({
       index: i,
