@@ -16,7 +16,12 @@ import { DashboardLayout } from '../components/dashboard/DashboardLayout';
 import { ApiError, api } from '../api/client';
 import { useSession } from '../hooks/useSession';
 import { Navigate } from 'react-router-dom';
-import { computeParams, type RiskMode } from '../lib/management';
+import {
+  computeParams,
+  validateBanca,
+  validateParams,
+  type RiskMode,
+} from '../lib/management';
 import { ManagementExplanation } from '../components/config/ManagementExplanation';
 
 const STORAGE_KEY = 'bytwave:config:calculator';
@@ -117,10 +122,18 @@ export default function Config() {
     }
   }, [banca, mode, symbol]);
 
+  const bancaCheck = useMemo(() => validateBanca(banca), [banca]);
+  const paramsCheck = useMemo(() => validateParams(params), [params]);
+  const canSave = bancaCheck.ok && paramsCheck.ok;
+
   async function saveStrategy(e: FormEvent) {
     e.preventDefault();
-    if (!banca || banca <= 0) {
-      setCfgFeedback({ ok: false, msg: 'Informe um valor de banca > 0.' });
+    if (!bancaCheck.ok) {
+      setCfgFeedback({ ok: false, msg: bancaCheck.msg ?? 'Banca inválida.' });
+      return;
+    }
+    if (!paramsCheck.ok) {
+      setCfgFeedback({ ok: false, msg: paramsCheck.msg ?? 'Parâmetros inválidos.' });
       return;
     }
     setSavingCfg(true);
@@ -277,6 +290,12 @@ export default function Config() {
                 </button>
               ))}
             </div>
+            {!bancaCheck.ok && banca > 0 && (
+              <p className="mt-2 text-[11px] text-yellow-300 flex items-center gap-1.5">
+                <AlertTriangle className="w-3 h-3" />
+                {bancaCheck.msg}
+              </p>
+            )}
           </div>
 
           {/* Mode */}
@@ -326,12 +345,15 @@ export default function Config() {
             </p>
           </div>
 
+          {!paramsCheck.ok && bancaCheck.ok && (
+            <Feedback ok={false} msg={paramsCheck.msg ?? 'Parâmetros inválidos.'} />
+          )}
           {cfgFeedback && <Feedback ok={cfgFeedback.ok} msg={cfgFeedback.msg} />}
 
           <button
             type="submit"
-            disabled={loadingCfg || savingCfg}
-            className="w-full h-11 rounded-full bg-primary text-primary-foreground font-display font-semibold text-sm tracking-wider hover:scale-[1.01] transition-all disabled:opacity-60 box-glow flex items-center justify-center gap-2"
+            disabled={loadingCfg || savingCfg || !canSave}
+            className="w-full h-11 rounded-full bg-primary text-primary-foreground font-display font-semibold text-sm tracking-wider hover:scale-[1.01] transition-all disabled:opacity-60 disabled:cursor-not-allowed box-glow flex items-center justify-center gap-2"
           >
             <Save className="w-4 h-4" />
             {savingCfg ? 'Salvando...' : 'Salvar gerenciamento'}

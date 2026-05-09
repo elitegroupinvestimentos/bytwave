@@ -7,13 +7,16 @@ import {
   Sparkles,
   Shield,
   Flame,
+  HelpCircle,
 } from 'lucide-react';
+import { useState } from 'react';
 import {
   RISK_MULTIPLIERS,
   buildVolumeLadder,
   buildStepLadder,
   type RiskMode,
 } from '../../lib/management';
+import { HowItWorksModal } from './HowItWorksModal';
 
 interface Props {
   banca: number;
@@ -23,6 +26,7 @@ interface Props {
 const fmt2 = (n: number) => Number(n.toFixed(2));
 
 export function ManagementExplanation({ banca, mode }: Props) {
+  const [helpOpen, setHelpOpen] = useState(false);
   const m = RISK_MULTIPLIERS[mode];
   const safeBanca = banca > 0 ? banca : 0;
   const bo = fmt2(safeBanca * m.bo);
@@ -48,8 +52,19 @@ export function ManagementExplanation({ banca, mode }: Props) {
           <BookOpen className="w-4 h-4 text-primary" />
           Como o gerenciamento é calculado
         </div>
-        <ModeBadge mode={mode} />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setHelpOpen(true)}
+            className="flex items-center gap-1.5 text-[11px] font-mono px-2.5 py-1 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 transition-colors"
+          >
+            <HelpCircle className="w-3 h-3" />
+            Ver explicação completa
+          </button>
+          <ModeBadge mode={mode} />
+        </div>
       </div>
+      <HowItWorksModal open={helpOpen} onClose={() => setHelpOpen(false)} />
 
       <ExplCard
         icon={<TrendingDown className="w-4 h-4" />}

@@ -13,29 +13,62 @@ export interface ManagementParams {
 
 export const BO_MIN = 0.2;
 export const SO_MIN = 0.4;
+export const MIN_BANCA_USDT = 50;
 
 export const RISK_MULTIPLIERS = {
   conservador: {
     bo: 0.004,
     so: 0.008,
     leverage: 10,
-    max_safety_orders: 6,
+    max_safety_orders: 5,
     initial_distance_pct: 0.6,
     step_scale: 1.5,
     volume_scale: 1.8,
-    target_profit_pct: 0.5,
-  },
-  agressivo: {
-    bo: 0.006,
-    so: 0.012,
-    leverage: 12,
-    max_safety_orders: 5,
-    initial_distance_pct: 0.5,
-    step_scale: 1.4,
-    volume_scale: 2.0,
     target_profit_pct: 0.6,
   },
+  agressivo: {
+    bo: 0.008,
+    so: 0.016,
+    leverage: 12,
+    max_safety_orders: 6,
+    initial_distance_pct: 0.45,
+    step_scale: 1.3,
+    volume_scale: 2.0,
+    target_profit_pct: 0.8,
+  },
 } as const;
+
+export interface ValidationResult {
+  ok: boolean;
+  msg?: string;
+}
+
+export function validateBanca(b: number): ValidationResult {
+  if (!Number.isFinite(b) || b <= 0) {
+    return { ok: false, msg: 'Informe um valor de banca válido.' };
+  }
+  if (b < MIN_BANCA_USDT) {
+    return {
+      ok: false,
+      msg: `Banca mínima é $${MIN_BANCA_USDT} USDT. O cálculo automático precisa desse mínimo pra gerar entradas viáveis.`,
+    };
+  }
+  return { ok: true };
+}
+
+// Check rough Binance minimum: notional = BO * leverage. Most pairs need
+// notional >= $5 (USDT-M futures). We warn at $5 since the engine pre-check
+// catches the actual per-symbol min and raises -4164 if too small.
+export function validateParams(p: ManagementParams): ValidationResult {
+  const notional = p.base_order_usdt * p.leverage;
+  if (notional < 5) {
+    return {
+      ok: false,
+      msg: 'O valor calculado ficou abaixo do mínimo permitido pela Binance para este par.',
+    };
+  }
+  return { ok: true };
+}
 
 const round2 = (n: number) => Number(n.toFixed(2));
 
