@@ -112,7 +112,7 @@ async function processSide(
     if (!(await chargeForCycleOpen(cfg, side))) return;
     if (!(await preTradeChecks(cfg, client))) return;
     await ensureAccountReady(cfg, client);
-    await openCycle(cfg, side, client, filters);
+    cycle = await openCycle(cfg, side, client, filters);
     return;
   }
 
@@ -262,35 +262,8 @@ async function openCycle(
   side: CycleSide,
   client: BinanceFuturesClient,
   filters: SymbolFilters,
-): Promise<CycleRow | null> {
+): Promise<CycleRow> {
   const refPrice = await client.tickerPrice(cfg.symbol);
-
-  // Validação ANTES de criar cycle row: a BO precisa atender o minNotional
-  // do par. Se não, auto-pausa (sem criar ciclo órfão) e avisa o usuário.
-  if (cfg.base_order_usdt < filters.minNotional) {
-    await setConfigStatus(cfg.id, 'paused').catch(() => undefined);
-    await botLog({
-      level: 'warn',
-      scope: 'engine',
-      user_id: cfg.user_id,
-      message: `Bot pausado: Base Order $${cfg.base_order_usdt} é menor que o mínimo de $${filters.minNotional} exigido pelo ${cfg.symbol}. Aumente a banca ou troque de par.`,
-      data: { bo: cfg.base_order_usdt, min_notional: filters.minNotional, symbol: cfg.symbol },
-    });
-    return null;
-  }
-
-  const baseQty = cfg.base_order_usdt / refPrice;
-  // Confere se a quantidade resultante atende o minQty do par
-  if (baseQty < filters.minQty) {
-    await setConfigStatus(cfg.id, 'paused').catch(() => undefined);
-    await botLog({
-      level: 'warn',
-      scope: 'engine',
-      user_id: cfg.user_id,
-      message: `Bot pausado: quantidade calculada (${baseQty.toFixed(8)}) está abaixo do mínimo (${filters.minQty}) do ${cfg.symbol}.`,
-    });
-    return null;
-  }
 
   const cycle = await createCycle({
     user_id: cfg.user_id,
@@ -300,6 +273,7 @@ async function openCycle(
   });
 
   // BASE order: MARKET com qty derivada do base_order_usdt
+  const baseQty = cfg.base_order_usdt / refPrice;
   await placeAndRecordOrder({
     user_id: cfg.user_id,
     cycle_id: cycle.id,
@@ -363,46 +337,21 @@ async function advanceCycle(
         }
       }
 
+      // PnL aproximado: usa mark/preço atual como preço de saída.
+      const markPrice = sidePos
+        ? Number(sidePos.markPrice ?? 0)
+        : await client.tickerPrice(cfg.symbol).catch(() => 0);
       const fills = refreshed
         .filter((o) => o.role === 'BASE' || o.role === 'SAFETY')
         .filter((o) => o.filled_qty > 0 && o.avg_fill_price)
         .map((o) => ({ price: Number(o.avg_fill_price), qty: Number(o.filled_qty) }));
       const { avg, totalQty } = weightedAveragePrice(fills);
-
-      // PnL: tenta REAL via /fapi/v1/income (Binance soma o que realmente
-      // foi creditado/debitado). Filtramos pelo período do ciclo + symbol.
-      let approxPnl = 0;
-      let pnlSource = 'unknown';
-      try {
-        const start = new Date(cycle.opened_at).getTime() - 1000;
-        const incomes = await client.income({
-          symbol: cfg.symbol,
-          incomeType: 'REALIZED_PNL',
-          startTime: start,
-          limit: 100,
-        });
-        if (incomes && incomes.length > 0) {
-          approxPnl = incomes.reduce((s, r) => s + Number(r.income ?? 0), 0);
-          pnlSource = 'binance_income';
-        }
-      } catch {
-        // ignora — cai no fallback
-      }
-
-      // Fallback: se não conseguiu pelo income, calcula com mark/ticker
-      if (pnlSource === 'unknown') {
-        let markPrice = sidePos ? Number(sidePos.markPrice ?? 0) : 0;
-        if (markPrice <= 0) {
-          markPrice = await client.tickerPrice(cfg.symbol).catch(() => 0);
-        }
-        approxPnl =
-          markPrice > 0 && avg > 0
-            ? side === 'LONG'
-              ? (markPrice - avg) * totalQty
-              : (avg - markPrice) * totalQty
-            : 0;
-        pnlSource = 'mark_price_estimate';
-      }
+      const approxPnl =
+        markPrice > 0 && avg > 0
+          ? side === 'LONG'
+            ? (markPrice - avg) * totalQty
+            : (avg - markPrice) * totalQty
+          : 0;
 
       await updateCycle(cycle.id, {
         status: 'closed',
@@ -427,7 +376,7 @@ async function advanceCycle(
         scope: 'engine',
         user_id: cfg.user_id,
         cycle_id: cycle.id,
-        message: `Ciclo ${side} fechado externamente — bot pausado. PnL ${approxPnl.toFixed(2)} USDT (fonte: ${pnlSource}, avg ${avg.toFixed(2)})`,
+        message: `Ciclo ${side} fechado externamente — bot pausado. PnL aprox ${approxPnl.toFixed(2)} USDT (mark ${markPrice}, avg ${avg.toFixed(2)})`,
       });
       return;
     }
@@ -459,55 +408,28 @@ async function advanceCycle(
     // 2.5) Dispara próximas SOs como MARKET se o preço cruzou o nível.
     await triggerSafetyOrders(cfg, cycle, side, client, filters, refreshed);
 
-    // 3) TP: cria se não existe ou recoloca se preço médio mudou
-    const tpActive = refreshed.find(
-      (o) => o.role === 'TAKE_PROFIT' && o.status !== 'CANCELED' && o.status !== 'EXPIRED',
-    );
-    if (avg > 0 && totalQty > 0) {
-      if (!tpActive) {
-        // Não tem TP ativo (provavelmente abertura falhou ou TP foi
-        // cancelado). Cria um agora.
+    // 3) Ajusta o TAKE_PROFIT se preço médio mudou
+    const tp = refreshed.find((o) => o.role === 'TAKE_PROFIT');
+    const newTpPrice = takeProfitPrice(cfg, avg || 0, side);
+    if (avg > 0 && tp && tp.status !== 'FILLED') {
+      const tpPrice = Number(tp.stop_price ?? tp.price ?? 0);
+      const driftPct = tpPrice > 0 ? Math.abs(tpPrice - newTpPrice) / tpPrice : 1;
+      // Se drift > 0.05% recoloca o TP.
+      if (driftPct > 0.0005) {
         try {
+          if (tp.binance_order_id) {
+            await client.cancelOrder(cfg.symbol, tp.binance_order_id).catch(() => undefined);
+            await updateOrder(tp.id, { status: 'CANCELED' });
+          }
           await refreshAndPlaceTakeProfit(cfg, cycle.id, side, client, filters, avg, totalQty);
-          await botLog({
-            level: 'info',
-            scope: 'engine',
-            user_id: cfg.user_id,
-            cycle_id: cycle.id,
-            message: `TP criado retroativamente em ${takeProfitPrice(cfg, avg, side).toFixed(2)}`,
-          });
         } catch (err: any) {
           await botLog({
             level: 'warn',
             scope: 'engine',
             user_id: cfg.user_id,
             cycle_id: cycle.id,
-            message: `Falha ao criar TP: ${err.message}`,
+            message: `Falha ao reposicionar TP: ${err.message}`,
           });
-        }
-      } else if (tpActive.status !== 'FILLED') {
-        const newTpPrice = takeProfitPrice(cfg, avg, side);
-        const tpPrice = Number(tpActive.stop_price ?? tpActive.price ?? 0);
-        const driftPct = tpPrice > 0 ? Math.abs(tpPrice - newTpPrice) / tpPrice : 1;
-        // Se drift > 0.05% recoloca o TP.
-        if (driftPct > 0.0005) {
-          try {
-            if (tpActive.binance_order_id) {
-              await client
-                .cancelOrder(cfg.symbol, tpActive.binance_order_id)
-                .catch(() => undefined);
-              await updateOrder(tpActive.id, { status: 'CANCELED' });
-            }
-            await refreshAndPlaceTakeProfit(cfg, cycle.id, side, client, filters, avg, totalQty);
-          } catch (err: any) {
-            await botLog({
-              level: 'warn',
-              scope: 'engine',
-              user_id: cfg.user_id,
-              cycle_id: cycle.id,
-              message: `Falha ao reposicionar TP: ${err.message}`,
-            });
-          }
         }
       }
     }
@@ -630,12 +552,6 @@ async function refreshAndPlaceTakeProfit(
   qty: number,
 ) {
   const tpPrice = takeProfitPrice(cfg, avgPrice, side);
-  // TP é uma ordem LIMIT no preço alvo. Quando o mercado atinge o preço,
-  // a ordem é casada e fecha a posição (em hedge mode, side oposto +
-  // positionSide=LONG/SHORT já fecha o lado certo).
-  // Usamos LIMIT em vez de TAKE_PROFIT_MARKET porque a Binance retorna
-  // -4120 ("use Algo Orders API") pra TAKE_PROFIT_MARKET em alguns casos
-  // — LIMIT é universalmente aceita e ainda paga maker fee.
   await placeAndRecordOrder({
     user_id: cfg.user_id,
     cycle_id,
@@ -644,9 +560,10 @@ async function refreshAndPlaceTakeProfit(
     symbol: cfg.symbol,
     side,
     role: 'TAKE_PROFIT',
-    type: 'LIMIT',
+    type: 'TAKE_PROFIT_MARKET',
     qty,
-    price: tpPrice,
+    stopPrice: tpPrice,
+    closePosition: true,
   });
 }
 
