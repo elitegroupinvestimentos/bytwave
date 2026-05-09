@@ -127,6 +127,13 @@ export default function Dashboard() {
     };
   }, []);
 
+  // Auto-dismiss do feedback após 5s
+  useEffect(() => {
+    if (!actionMsg) return;
+    const id = setTimeout(() => setActionMsg(null), 5000);
+    return () => clearTimeout(id);
+  }, [actionMsg]);
+
   // Status da estratégia (running/paused/stopped/missing)
   useEffect(() => {
     let alive = true;
@@ -163,7 +170,7 @@ export default function Dashboard() {
       setStrategyStatus(action === 'botStart' ? 'running' : 'paused');
       setActionMsg({
         type: 'success',
-        msg: action === 'botStart' ? 'Bot iniciado. As ordens vão sair no próximo tick (~5s).' : 'Bot pausado.',
+        msg: action === 'botStart' ? 'Bot iniciado' : 'Bot pausado',
       });
     } catch (err: any) {
       if (err instanceof ApiError) {
