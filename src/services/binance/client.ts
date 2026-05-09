@@ -157,15 +157,20 @@ export class BinanceFuturesClient {
       side: p.side,
       positionSide: p.positionSide,
       type: p.type,
-      quantity: p.quantity,
     };
+    // closePosition=true e quantity são MUTUAMENTE EXCLUSIVOS na Binance.
+    // Mandar os dois faz a Binance retornar -4120 ("Order type not supported,
+    // use Algo Orders API"). Pra TP/STOP "fecha tudo", só closePosition.
+    if (p.closePosition) {
+      params.closePosition = 'true';
+    } else {
+      params.quantity = p.quantity;
+    }
     if (p.price !== undefined) params.price = p.price;
     if (p.stopPrice !== undefined) params.stopPrice = p.stopPrice;
     if (p.timeInForce) params.timeInForce = p.timeInForce;
     if (p.newClientOrderId) params.newClientOrderId = p.newClientOrderId;
     if (p.workingType) params.workingType = p.workingType;
-    // Em hedge mode, reduceOnly/closePosition são gerenciados pelo positionSide.
-    if (p.closePosition) params.closePosition = 'true';
 
     return this.signedRequest('POST', '/fapi/v1/order', params);
   }

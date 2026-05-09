@@ -339,12 +339,19 @@ async function advanceCycle(
         realized_pnl_usdt: approxPnl,
       });
 
+      // AUTO-PAUSE: usuário fechou manualmente → provavelmente NÃO quer
+      // que o bot abra ciclo novo automaticamente. Pausa a config.
+      // Se quiser voltar a operar, basta clicar em Iniciar.
+      if (cfg.status === 'running') {
+        await setConfigStatus(cfg.id, 'paused').catch(() => undefined);
+      }
+
       await botLog({
         level: 'info',
         scope: 'engine',
         user_id: cfg.user_id,
         cycle_id: cycle.id,
-        message: `Ciclo ${side} fechado externamente na Binance. PnL aprox ${approxPnl.toFixed(2)} USDT (mark ${markPrice}, avg ${avg.toFixed(2)})`,
+        message: `Ciclo ${side} fechado externamente — bot pausado. PnL aprox ${approxPnl.toFixed(2)} USDT (mark ${markPrice}, avg ${avg.toFixed(2)})`,
       });
       return;
     }
