@@ -46,22 +46,7 @@ export function SymbolHeader({
       </div>
 
       <div className="flex items-center gap-2 shrink-0">
-        <button
-          onClick={onToggle}
-          className={`flex items-center gap-2 h-10 px-4 rounded-full border text-sm font-medium transition-all ${
-            status === 'running'
-              ? 'border-accent/50 bg-accent/10 text-accent'
-              : status === 'paused'
-              ? 'border-yellow-500/50 bg-yellow-500/10 text-yellow-400'
-              : 'border-border bg-card/40 text-muted-foreground'
-          }`}
-        >
-          <span className={`w-2 h-2 rounded-full ${
-            status === 'running' ? 'bg-accent animate-pulse' :
-            status === 'paused'  ? 'bg-yellow-400' : 'bg-muted-foreground'
-          }`} />
-          {status === 'running' ? 'Ativo' : status === 'paused' ? 'Pausado' : 'Parado'}
-        </button>
+        <StatusToggle status={status} onToggle={onToggle} />
       </div>
     </div>
   );
@@ -74,3 +59,59 @@ function formatPrice(p: number): string {
 }
 
 export const _icons = { Pause, Play };
+
+/**
+ * Toggle estilo switch com knob preto e label dentro:
+ *  - running → fundo verde, knob à direita, "ATIVO" à esquerda
+ *  - paused  → fundo amarelo, knob à esquerda, "PAUSADO" à direita
+ *  - stopped → fundo escuro, knob à esquerda, "PARADO" à direita
+ */
+function StatusToggle({
+  status,
+  onToggle,
+}: {
+  status: 'running' | 'paused' | 'stopped';
+  onToggle?: () => void;
+}) {
+  const isRunning = status === 'running';
+  const isPaused = status === 'paused';
+
+  const bgClass = isRunning
+    ? 'bg-[#22c55e] shadow-[0_0_24px_-4px_rgba(34,197,94,0.55)]'
+    : isPaused
+    ? 'bg-[#facc15] shadow-[0_0_24px_-4px_rgba(250,204,21,0.45)]'
+    : 'bg-secondary border border-border';
+
+  const label = isRunning ? 'Ativo' : isPaused ? 'Pausado' : 'Parado';
+
+  const labelClass =
+    isRunning || isPaused
+      ? 'text-[11px] font-display font-bold tracking-[0.18em] uppercase text-black/85 select-none'
+      : 'text-[11px] font-display font-bold tracking-[0.18em] uppercase text-muted-foreground select-none';
+
+  const knob = (
+    <span className="w-8 h-8 rounded-full bg-black/85 shrink-0 transition-all" />
+  );
+  const labelNode = <span className={`flex-1 text-center px-1 ${labelClass}`}>{label}</span>;
+
+  return (
+    <button
+      onClick={onToggle}
+      type="button"
+      className={`flex items-center gap-1 w-[120px] h-10 rounded-full p-1 transition-colors ${bgClass}`}
+      title={`Clique para ${isRunning ? 'pausar' : 'iniciar'}`}
+    >
+      {isRunning ? (
+        <>
+          {labelNode}
+          {knob}
+        </>
+      ) : (
+        <>
+          {knob}
+          {labelNode}
+        </>
+      )}
+    </button>
+  );
+}
