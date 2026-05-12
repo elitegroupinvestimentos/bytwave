@@ -338,9 +338,13 @@ async function advanceCycle(
       }
 
       // PnL aproximado: usa mark/preço atual como preço de saída.
-      const markPrice = sidePos
-        ? Number(sidePos.markPrice ?? 0)
-        : await client.tickerPrice(cfg.symbol).catch(() => 0);
+      // Quando a posição já fechou, Binance frequentemente retorna
+      // markPrice=0 dentro de accountInfo. Nesse caso cai no ticker
+      // (preço de mercado spot do par) pra ter um proxy viável.
+      let markPrice = sidePos ? Number(sidePos.markPrice ?? 0) : 0;
+      if (markPrice <= 0) {
+        markPrice = await client.tickerPrice(cfg.symbol).catch(() => 0);
+      }
       const fills = refreshed
         .filter((o) => o.role === 'BASE' || o.role === 'SAFETY')
         .filter((o) => o.filled_qty > 0 && o.avg_fill_price)
