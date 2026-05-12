@@ -1,12 +1,37 @@
 import { Target } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface CycleCardProps {
   cycleNumber: number;
   changePct: number;
   pnlAccount: number;
   status: 'running' | 'paused' | 'stopped';
-  startedAt?: number; // timestamp ms
+}
+
+const STORAGE_KEY = 'bytwave:dashboard:uptime';
+
+interface Persisted {
+  startTs: number | null;
+  frozenMs: number;
+  lastStatus: string;
+}
+
+function loadPersisted(): Persisted {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    // ignore
+  }
+  return { startTs: null, frozenMs: 0, lastStatus: 'stopped' };
+}
+
+function savePersisted(p: Persisted) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
+  } catch {
+    // ignore
+  }
 }
 
 export function CycleCard({
@@ -14,17 +39,48 @@ export function CycleCard({
   changePct,
   pnlAccount,
   status,
-  startedAt,
 }: CycleCardProps) {
-  const [elapsed, setElapsed] = useState('00:00:00');
+  const [startTs, setStartTs] = useState<number | null>(() => loadPersisted().startTs);
+  const [frozenMs, setFrozenMs] = useState<number>(() => loadPersisted().frozenMs);
+  const [now, setNow] = useState(Date.now());
+  const prevStatus = useRef<string | null>(null);
 
+  // Transições de status: zera/congela cronômetro.
   useEffect(() => {
-    if (!startedAt) return;
-    const tick = () => setElapsed(formatElapsed(Date.now() - startedAt));
-    tick();
-    const id = setInterval(tick, 1000);
+    const persisted = loadPersisted();
+    // Primeira render: hidrata de localStorage.
+    if (prevStatus.current === null) {
+      prevStatus.current = persisted.lastStatus;
+    }
+
+    if (prevStatus.current === status) return;
+
+    if (status === 'running') {
+      // (Re)inicia: zera e marca início agora.
+      const ts = Date.now();
+      setStartTs(ts);
+      setFrozenMs(0);
+      savePersisted({ startTs: ts, frozenMs: 0, lastStatus: 'running' });
+    } else {
+      // Pausou/parou: congela elapsed atual.
+      const elapsed = startTs ? Date.now() - startTs : frozenMs;
+      setStartTs(null);
+      setFrozenMs(elapsed);
+      savePersisted({ startTs: null, frozenMs: elapsed, lastStatus: status });
+    }
+    prevStatus.current = status;
+  }, [status, startTs, frozenMs]);
+
+  // Tick por segundo enquanto rodando.
+  useEffect(() => {
+    if (status !== 'running') return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [startedAt]);
+  }, [status]);
+
+  const elapsedMs =
+    status === 'running' && startTs ? now - startTs : frozenMs;
+  const elapsed = formatElapsed(elapsedMs);
 
   const positive = changePct >= 0;
   const statusLabel =
@@ -70,9 +126,15 @@ export function CycleCard({
 
         <div className="text-right">
           <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-1.5">
-            Última atualização
+            Tempo ativo
           </div>
-          <div className="font-mono text-2xl font-semibold tabular-nums">{elapsed}</div>
+          <div
+            className={`font-mono text-2xl font-semibold tabular-nums ${
+              status === 'running' ? 'text-foreground' : 'text-muted-foreground'
+            }`}
+          >
+            {elapsed}
+          </div>
         </div>
       </div>
     </div>

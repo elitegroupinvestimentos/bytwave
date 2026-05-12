@@ -359,11 +359,6 @@ export default function Dashboard() {
           }
           pnlAccount={totalUnrealized}
           status={status}
-          startedAt={
-            openCycles[0]?.opened_at
-              ? new Date(openCycles[0].opened_at).getTime()
-              : Date.now()
-          }
         />
         <PriceChart symbol={symbol} />
       </div>
