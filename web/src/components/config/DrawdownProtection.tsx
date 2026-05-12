@@ -268,13 +268,14 @@ function ToggleButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`relative w-14 h-7 rounded-full transition-colors ${
+      aria-pressed={active}
+      className={`relative inline-flex shrink-0 items-center h-6 w-11 rounded-full transition-colors ${
         active ? 'bg-accent' : 'bg-secondary/60'
       } disabled:opacity-60`}
     >
       <span
-        className={`absolute top-0.5 w-6 h-6 rounded-full bg-foreground transition-transform ${
-          active ? 'translate-x-7' : 'translate-x-0.5'
+        className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform ${
+          active ? 'translate-x-[22px]' : 'translate-x-0.5'
         }`}
       />
     </button>
