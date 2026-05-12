@@ -189,6 +189,15 @@ export const api = {
       '/tokens/purchase',
       { method: 'POST', body: JSON.stringify(input) },
     ),
+  tokensTopup: (input: {
+    user_id: string;
+    credits: number;
+    payment_method?: 'stripe' | 'binance_pay' | 'pix' | 'card' | 'placeholder';
+  }) =>
+    http<{ success: boolean; balance_after: number; credits: number; usd: number }>(
+      '/tokens/topup',
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
 
   // ── bot control ────────────────────────────────────────────────────────
   botStart: (input: { user_id: string; symbol: string }) =>

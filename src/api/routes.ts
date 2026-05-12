@@ -778,6 +778,47 @@ router.post(
   }),
 );
 
+// Topup avulso: usuário escolhe qty arbitrária de créditos (1 USD = 1 crédito).
+// Hoje credita direto (placeholder); quando ligar gateway, valida antes.
+const topupSchema = z.object({
+  user_id: z.string().uuid(),
+  credits: z.number().int().min(1).max(100000),
+  payment_method: z.enum(['stripe', 'binance_pay', 'pix', 'card', 'placeholder']).default('placeholder'),
+});
+
+router.post(
+  '/tokens/topup',
+  requireAuth,
+  requireSelf((req) => req.body?.user_id),
+  ah(async (req, res) => {
+    const body = topupSchema.parse(req.body);
+    const usd = body.credits; // 1:1
+    const result = await grantTokens({
+      user_id: body.user_id,
+      amount: body.credits,
+      reason: 'pack_purchase',
+      metadata: {
+        kind: 'topup',
+        usd_amount: usd,
+        payment_method: body.payment_method,
+      },
+    });
+    await botLog({
+      level: 'info',
+      scope: 'tokens',
+      user_id: body.user_id,
+      message: `Topup: +${body.credits} créditos ($${usd} via ${body.payment_method}). Saldo: ${result.balance_after}`,
+      data: { credits: body.credits, usd, payment_method: body.payment_method },
+    });
+    res.json({
+      success: result.success,
+      balance_after: result.balance_after,
+      credits: body.credits,
+      usd,
+    });
+  }),
+);
+
 // ── error handler ───────────────────────────────────────────────────────────
 router.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof z.ZodError) {
