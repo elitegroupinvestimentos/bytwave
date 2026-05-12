@@ -51,6 +51,17 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   health: () => http<{ ok: true; mode: string }>('/health'),
   status: (userId: string) => http<{ open_cycles: any[] }>(`/status/${userId}`),
+  closedCycles: (userId: string, limit = 50) =>
+    http<
+      Array<{
+        id: string;
+        symbol: string;
+        side: 'LONG' | 'SHORT';
+        realized_pnl_usdt: number;
+        closed_at: string;
+        opened_at: string;
+      }>
+    >(`/cycles/closed/${userId}?limit=${limit}`),
   openOrders: (userId: string) => http<any[]>(`/orders/open/${userId}`),
   history: (userId: string, limit = 200) =>
     http<any[]>(`/orders/history/${userId}?limit=${limit}`),

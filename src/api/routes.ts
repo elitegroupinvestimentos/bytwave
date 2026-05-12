@@ -18,6 +18,7 @@ import {
   listOpenOrders,
   listOrderHistory,
   listOpenCyclesForUser,
+  listClosedCyclesForUser,
   getPerformanceSummary,
   getOpenCycle,
   updateCycle,
@@ -588,6 +589,17 @@ router.get(
   ah(async (req, res) => {
     const cycles = await listOpenCyclesForUser(req.params.user_id);
     res.json({ open_cycles: cycles });
+  }),
+);
+
+router.get(
+  '/cycles/closed/:user_id',
+  requireAuth,
+  requireSelf((req) => req.params.user_id),
+  ah(async (req, res) => {
+    const limit = Number(req.query.limit ?? 50);
+    const cycles = await listClosedCyclesForUser(req.params.user_id, limit);
+    res.json(cycles);
   }),
 );
 

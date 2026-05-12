@@ -80,10 +80,10 @@ export default function Dashboard() {
     let alive = true;
     const poll = async () => {
       try {
-        const [bal, st, hist, oo, pnl, pos] = await Promise.all([
+        const [bal, st, closedCycles, oo, pnl, pos] = await Promise.all([
           api.testBinance(userId).catch(() => null),
           api.status(userId).catch(() => ({ open_cycles: [] })),
-          api.history(userId, 50).catch(() => []),
+          api.closedCycles(userId, 20).catch(() => []),
           api.openOrders(userId).catch(() => []),
           api.pnl(userId).catch(() => null),
           api.positions(userId).catch(() => []),
@@ -102,17 +102,18 @@ export default function Dashboard() {
           });
         }
 
-        // monta histórico simples a partir das ordens FILLED com role=TAKE_PROFIT
-        const closed = (hist as any[]).filter(
-          (o) => o.role === 'TAKE_PROFIT' && o.status === 'FILLED',
-        );
+        // Histórico = ciclos fechados (status=closed) com PnL real.
+        // Cobre tanto fechamento via TP automático quanto fechamento manual.
+        const cs = closedCycles as any[];
         setHistory(
-          closed.slice(0, 6).map((o, i) => ({
-            id: o.id,
-            number: closed.length - i,
-            side: o.position_side,
-            pnl: 0, // TODO: calcular a partir do ciclo
-            closedAt: new Date(o.created_at).toLocaleString('pt-BR'),
+          cs.slice(0, 8).map((c, i) => ({
+            id: c.id,
+            number: cs.length - i,
+            side: c.side,
+            pnl: Number(c.realized_pnl_usdt ?? 0),
+            closedAt: c.closed_at
+              ? new Date(c.closed_at).toLocaleString('pt-BR')
+              : '—',
           })),
         );
       } catch {

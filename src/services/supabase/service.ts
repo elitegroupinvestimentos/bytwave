@@ -226,6 +226,18 @@ export async function listOpenCyclesForUser(user_id: string) {
   return (data ?? []) as CycleRow[];
 }
 
+export async function listClosedCyclesForUser(user_id: string, limit = 50) {
+  const { data, error } = await supabase
+    .from('cycles')
+    .select('*')
+    .eq('user_id', user_id)
+    .eq('status', 'closed')
+    .order('closed_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as CycleRow[];
+}
+
 // ── Orders ────────────────────────────────────────────────────────────────────
 export async function insertOrder(row: Omit<OrderRow, 'id' | 'created_at' | 'updated_at'>) {
   const { data, error } = await supabase.from('orders').insert(row).select('*').single();
