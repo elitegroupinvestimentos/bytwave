@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useBinanceBalance } from '../hooks/useBinanceBalance';
 import {
   Settings,
   Key,
@@ -35,13 +36,14 @@ export default function Config() {
   const userId = session.user_id;
 
   const [symbol, setSymbol] = useState('BTCUSDT');
-  const [banca, setBanca] = useState<number>(0);
   const [mode, setMode] = useState<RiskMode>('agressivo');
   const [loadingCfg, setLoadingCfg] = useState(true);
   const [savingCfg, setSavingCfg] = useState(false);
   const [cfgFeedback, setCfgFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [loadingBalance, setLoadingBalance] = useState(false);
+  const bin = useBinanceBalance(userId);
+  const banca = bin.total;
+  const loadingBalance = bin.loading;
 
   // Binance keys form
   const [apiKey, setApiKey] = useState('');
@@ -119,24 +121,7 @@ export default function Config() {
     }
   }, [mode, symbol]);
 
-  // Auto-fetch banca da Binance quando conexão tá ok
-  async function fetchBalance() {
-    if (!binStatus?.connected) return;
-    setLoadingBalance(true);
-    try {
-      const r = await api.testBinance(userId);
-      setBanca(Number(r.total ?? 0));
-    } catch {
-      // ignora — usa fallback
-    } finally {
-      setLoadingBalance(false);
-    }
-  }
-
-  useEffect(() => {
-    if (binStatus?.connected) fetchBalance();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [binStatus?.connected]);
+  const fetchBalance = bin.refetch;
 
   const bancaCheck = useMemo(() => validateBanca(banca), [banca]);
   const paramsCheck = useMemo(() => validateParams(params), [params]);
