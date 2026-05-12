@@ -1,6 +1,7 @@
 import { ChevronLeft, LayoutGrid, ArrowLeftRight, TrendingUp, Megaphone, Settings, X } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { LogoMark } from '../Logo';
+import { useI18n } from '../../lib/i18n';
 
 const items = [
   { to: '/dashboard',   icon: LayoutGrid,     label: 'Menu' },
@@ -18,6 +19,7 @@ interface SidebarProps {
 
 export function Sidebar({ open, onClose }: SidebarProps) {
   const loc = useLocation();
+  const { t } = useI18n();
 
   return (
     <>
@@ -82,7 +84,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   }`}
               >
                 <it.icon className={`w-5 h-5 ${active ? 'text-primary' : ''}`} />
-                <span>{it.label}</span>
+                <span>{t(it.label)}</span>
               </Link>
             );
           })}

@@ -2,7 +2,9 @@ import { CreditCard, Wallet, ChevronDown, LogOut, Menu } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useState, useRef, useEffect } from 'react';
 import { TokenBalancePill } from './TokenBalancePill';
+import { LanguageSelector } from './LanguageSelector';
 import { clearSession } from '../../api/client';
+import { useI18n } from '../../lib/i18n';
 
 interface TopbarProps {
   title: string;
@@ -22,6 +24,7 @@ export function Topbar({
   onOpenMenu,
 }: TopbarProps) {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -63,8 +66,8 @@ export function Topbar({
           className="hidden sm:flex items-center gap-2 px-3 md:px-4 h-10 rounded-full bg-primary text-primary-foreground text-sm font-medium hover:scale-[1.02] transition-all box-glow"
         >
           <CreditCard className="w-4 h-4" />
-          <span className="hidden md:inline">Comprar Tokens</span>
-          <span className="md:hidden">Comprar</span>
+          <span className="hidden md:inline">{t('Comprar Tokens')}</span>
+          <span className="md:hidden">{t('Comprar')}</span>
         </Link>
 
         <TokenBalancePill userId={userId} />
@@ -77,6 +80,9 @@ export function Topbar({
           <Wallet className="w-4 h-4 text-muted-foreground" />
           ${balance.toFixed(2)}
         </div>
+
+        {/* Idioma */}
+        <LanguageSelector />
 
         {/* Avatar + dropdown */}
         <div className="relative" ref={menuRef}>
@@ -103,7 +109,7 @@ export function Topbar({
               <div className="md:hidden px-4 py-2 text-sm border-b border-border flex items-center justify-between">
                 <span className="text-muted-foreground flex items-center gap-1.5">
                   <Wallet className="w-3.5 h-3.5" />
-                  Saldo Binance
+                  {t('Saldo Binance')}
                 </span>
                 <span className="font-mono">${balance.toFixed(2)}</span>
               </div>
@@ -112,14 +118,14 @@ export function Topbar({
                 onClick={() => setMenuOpen(false)}
                 className="block px-4 py-2 text-sm hover:bg-secondary/50"
               >
-                Configurações
+                {t('Configurações')}
               </Link>
               <Link
                 to="/finance"
                 onClick={() => setMenuOpen(false)}
                 className="block px-4 py-2 text-sm hover:bg-secondary/50"
               >
-                Tokens
+                {t('Tokens')}
               </Link>
               <div className="my-1 border-t border-border" />
               <button
@@ -127,7 +133,7 @@ export function Topbar({
                 className="w-full text-left px-4 py-2 text-sm text-red-300 hover:bg-red-500/10 flex items-center gap-2"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                Sair
+                {t('Sair')}
               </button>
             </div>
           )}
