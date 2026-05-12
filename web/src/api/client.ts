@@ -199,6 +199,26 @@ export const api = {
       { method: 'POST', body: JSON.stringify(input) },
     ),
 
+  // ── drawdown protection ────────────────────────────────────────────────
+  drawdownGet: (userId: string) =>
+    http<DrawdownState | null>(`/drawdown/${userId}`),
+  drawdownSave: (input: {
+    user_id: string;
+    enabled: boolean;
+    type: 'percent' | 'fixed';
+    limit_pct: number;
+    limit_usd: number;
+  }) =>
+    http<{ ok: boolean; baseline_usd: number | null }>('/drawdown/save', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  drawdownReset: (input: { user_id: string }) =>
+    http<{ ok: boolean; baseline_usd: number }>('/drawdown/reset', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
   // ── bot control ────────────────────────────────────────────────────────
   botStart: (input: { user_id: string; symbol: string }) =>
     http<any>('/bot/start', { method: 'POST', body: JSON.stringify(input) }),
@@ -233,6 +253,16 @@ export interface TokenPack {
   price_brl: number | string;
   active: boolean;
   highlight: boolean;
+}
+
+export interface DrawdownState {
+  enabled: boolean;
+  type: 'percent' | 'fixed';
+  limit_pct: number;
+  limit_usd: number;
+  baseline_usd: number | null;
+  triggered_at: string | null;
+  triggered_equity: number | null;
 }
 
 // Klines públicos da Binance (sem auth) para o gráfico de preço.

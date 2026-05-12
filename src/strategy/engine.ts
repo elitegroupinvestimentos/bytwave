@@ -13,6 +13,11 @@ import {
   updateOrder,
 } from '../services/supabase/service';
 import { consumeTokens, getTokenBalance } from '../services/supabase/tokens';
+import {
+  getDrawdownState,
+  listUsersWithActiveDrawdown,
+  markDrawdownTriggered,
+} from '../services/supabase/drawdown';
 import { placeAndRecordOrder, refreshOrderStatus } from './orderManager';
 import { buildSafetyLadder, weightedAveragePrice } from './safetyOrderManager';
 import { takeProfitPrice } from './profitManager';
@@ -38,6 +43,16 @@ async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T | null>
  * Para cada config processa LONG e SHORT.
  */
 export async function runTick(): Promise<void> {
+  // Drawdown protection ANTES de processar configs. Se um usuário bateu
+  // o limite, encerramos posições e pausamos tudo dele.
+  await enforceDrawdownProtection().catch(async (err) => {
+    await botLog({
+      level: 'warn',
+      scope: 'engine',
+      message: `Drawdown check falhou: ${err?.message ?? err}`,
+    });
+  });
+
   // Inclui configs running + configs com ciclos abertos (mesmo paused/stopped),
   // pra reconciliação com Binance acontecer mesmo com bot pausado.
   const configs = await listConfigsToProcess();
@@ -591,4 +606,132 @@ async function persistSnapshot(user_id: string, client: BinanceFuturesClient) {
   } catch {
     // snapshot é best-effort
   }
+}
+
+// ── Drawdown protection ─────────────────────────────────────────────────────
+//
+// Para cada usuário com proteção ativa e ainda não disparada:
+//  - Lê equity Binance (totalWalletBalance + totalUnrealizedProfit)
+//  - Calcula perda em relação ao baseline_usd
+//  - Se perda >= limit → DISPARA:
+//     · marca drawdown_triggered_at
+//     · pausa todas as configs do usuário
+//     · cancela ordens pendentes nos símbolos abertos
+//     · fecha todas as posições não-zero a mercado
+//
+// Idempotente: se já disparou, listUsersWithActiveDrawdown não retorna esse user.
+async function enforceDrawdownProtection(): Promise<void> {
+  const userIds = await listUsersWithActiveDrawdown().catch(() => [] as string[]);
+  if (!userIds.length) return;
+
+  for (const user_id of userIds) {
+    try {
+      const state = await getDrawdownState(user_id);
+      if (!state || !state.enabled || state.triggered_at) continue;
+
+      let client: BinanceFuturesClient;
+      try {
+        client = await getBinanceClient(user_id);
+      } catch {
+        continue; // sem chaves Binance: não dá pra medir, segue
+      }
+
+      let acc: any;
+      try {
+        acc = await client.accountInfo();
+      } catch {
+        continue;
+      }
+
+      const equity =
+        Number(acc.totalWalletBalance ?? 0) + Number(acc.totalUnrealizedProfit ?? 0);
+
+      // Baseline lazy: se ainda não tem (user ativou sem chave Binance),
+      // captura agora e segue — disparo só acontece em ticks futuros.
+      if (state.baseline_usd == null) {
+        await markBaselineLazy(user_id, equity);
+        continue;
+      }
+
+      const baseline = state.baseline_usd;
+      const limitUsd =
+        state.type === 'fixed'
+          ? state.limit_usd
+          : (baseline * state.limit_pct) / 100;
+      const loss = baseline - equity; // >0 = perdendo
+
+      if (loss < limitUsd) continue;
+
+      // ─── DISPAROU ───
+      await markDrawdownTriggered(user_id, equity);
+      await botLog({
+        level: 'warn',
+        scope: 'engine',
+        user_id,
+        message: `🔒 Drawdown disparado. Equity=${equity.toFixed(2)}, baseline=${baseline.toFixed(2)}, perda=${loss.toFixed(2)} >= limite=${limitUsd.toFixed(2)}`,
+        data: {
+          equity,
+          baseline,
+          loss,
+          limit_usd: limitUsd,
+          type: state.type,
+        },
+      });
+
+      // Pausa todas as configs do usuário (running ou stopped).
+      const userConfigs = await listConfigsToProcess();
+      const myConfigs = userConfigs.filter((c) => c.user_id === user_id);
+      for (const c of myConfigs) {
+        await setConfigStatus(c.id, 'paused').catch(() => undefined);
+      }
+
+      // Fecha tudo: itera posições não-zero e manda MARKET fechando.
+      const positions = (acc.positions ?? []).filter(
+        (p: any) => Math.abs(Number(p.positionAmt ?? 0)) > 0,
+      );
+      for (const p of positions) {
+        const amt = Number(p.positionAmt);
+        const isLong = amt > 0 || p.positionSide === 'LONG';
+        try {
+          await client.placeOrder({
+            symbol: p.symbol,
+            side: isLong ? 'SELL' : 'BUY',
+            positionSide: p.positionSide,
+            type: 'MARKET',
+            quantity: Math.abs(amt),
+          });
+        } catch (err: any) {
+          await botLog({
+            level: 'warn',
+            scope: 'engine',
+            user_id,
+            message: `Drawdown: falha ao fechar ${p.symbol} ${p.positionSide}: ${err?.message ?? err}`,
+          });
+        }
+      }
+
+      // Cancela ordens pendentes nos símbolos das configs.
+      const symbols = Array.from(new Set(myConfigs.map((c) => c.symbol)));
+      for (const sym of symbols) {
+        await client.cancelAllOpen(sym).catch(() => undefined);
+      }
+    } catch (err: any) {
+      await botLog({
+        level: 'warn',
+        scope: 'engine',
+        user_id,
+        message: `Drawdown enforce falhou: ${err?.message ?? err}`,
+      });
+    }
+  }
+}
+
+// Atualiza apenas o baseline (sem mexer em flags). Usado quando o user
+// ativou proteção mas ainda não tinha Binance conectada.
+async function markBaselineLazy(user_id: string, equity: number) {
+  const { supabase } = await import('../services/supabase/client');
+  await supabase
+    .from('users')
+    .update({ drawdown_baseline_usd: equity })
+    .eq('id', user_id);
 }

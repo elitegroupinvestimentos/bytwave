@@ -819,6 +819,89 @@ router.post(
   }),
 );
 
+// ── drawdown protection ────────────────────────────────────────────────────
+import {
+  getDrawdownState,
+  saveDrawdownConfig,
+  resetDrawdownTrigger,
+} from '../services/supabase/drawdown';
+
+router.get(
+  '/drawdown/:user_id',
+  requireAuth,
+  requireSelf((req) => req.params.user_id),
+  ah(async (req, res) => {
+    const state = await getDrawdownState(req.params.user_id);
+    res.json(state ?? null);
+  }),
+);
+
+const drawdownSaveSchema = z.object({
+  user_id: z.string().uuid(),
+  enabled: z.boolean(),
+  type: z.enum(['percent', 'fixed']),
+  limit_pct: z.number().min(0.1).max(100),
+  limit_usd: z.number().min(0.01).max(1_000_000),
+});
+
+router.post(
+  '/drawdown/save',
+  requireAuth,
+  requireSelf((req) => req.body?.user_id),
+  ah(async (req, res) => {
+    const body = drawdownSaveSchema.parse(req.body);
+    let baseline: number | null = null;
+    if (body.enabled) {
+      // Captura equity Binance atual como baseline.
+      try {
+        const client = await getBinanceClient(body.user_id);
+        const info: any = await client.accountInfo();
+        baseline =
+          Number(info.totalWalletBalance ?? 0) +
+          Number(info.totalUnrealizedProfit ?? 0);
+      } catch {
+        // sem chaves Binance ainda — baseline fica null, engine vai resolver
+        // quando a config rodar.
+      }
+    }
+    await saveDrawdownConfig({ ...body, baseline_usd: baseline });
+    await botLog({
+      level: 'info',
+      scope: 'api',
+      user_id: body.user_id,
+      message: `Drawdown ${body.enabled ? 'ativado' : 'desativado'} (type=${body.type}, pct=${body.limit_pct}, usd=${body.limit_usd}, baseline=${baseline})`,
+    });
+    res.json({ ok: true, baseline_usd: baseline });
+  }),
+);
+
+// Reativa após trigger: limpa flag e atualiza baseline pra equity atual.
+router.post(
+  '/drawdown/reset',
+  requireAuth,
+  requireSelf((req) => req.body?.user_id),
+  ah(async (req, res) => {
+    const body = z.object({ user_id: z.string().uuid() }).parse(req.body);
+    let baseline = 0;
+    try {
+      const client = await getBinanceClient(body.user_id);
+      const info: any = await client.accountInfo();
+      baseline =
+        Number(info.totalWalletBalance ?? 0) + Number(info.totalUnrealizedProfit ?? 0);
+    } catch {
+      // sem chaves — baseline zero, mas reativa.
+    }
+    await resetDrawdownTrigger(body.user_id, baseline);
+    await botLog({
+      level: 'info',
+      scope: 'api',
+      user_id: body.user_id,
+      message: `Drawdown re-armado pelo usuário (novo baseline=${baseline})`,
+    });
+    res.json({ ok: true, baseline_usd: baseline });
+  }),
+);
+
 // ── error handler ───────────────────────────────────────────────────────────
 router.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof z.ZodError) {

@@ -26,6 +26,7 @@ import {
   type RiskMode,
 } from '../lib/management';
 import { HowItWorksModal } from '../components/config/HowItWorksModal';
+import { DrawdownProtection } from '../components/config/DrawdownProtection';
 
 const STORAGE_KEY = 'bytwave:config:mode';
 const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT', 'DOGEUSDT'];
@@ -322,6 +323,9 @@ export default function Config() {
               />
             </div>
           </div>
+
+          {/* Drawdown Protection */}
+          <DrawdownProtection userId={userId} />
 
           {!paramsCheck.ok && bancaCheck.ok && (
             <Feedback ok={false} msg={paramsCheck.msg ?? 'Parâmetros inválidos pra esse ativo.'} />
