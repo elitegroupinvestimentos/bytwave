@@ -1,10 +1,10 @@
-import { CreditCard, Wallet, ChevronDown, LogOut, Menu } from 'lucide-react';
+import { CreditCard, Wallet, ChevronDown, LogOut, Menu, Globe, Check } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useState, useRef, useEffect } from 'react';
 import { TokenBalancePill } from './TokenBalancePill';
 import { LanguageSelector } from './LanguageSelector';
 import { clearSession } from '../../api/client';
-import { useI18n } from '../../lib/i18n';
+import { useI18n, LANGUAGES, type Lang } from '../../lib/i18n';
 
 interface TopbarProps {
   title: string;
@@ -24,8 +24,9 @@ export function Topbar({
   onOpenMenu,
 }: TopbarProps) {
   const navigate = useNavigate();
-  const { t } = useI18n();
+  const { t, lang, setLang } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -81,8 +82,10 @@ export function Topbar({
           ${balance.toFixed(2)}
         </div>
 
-        {/* Idioma */}
-        <LanguageSelector />
+        {/* Idioma — só desktop. Mobile entra no dropdown do perfil. */}
+        <div className="hidden md:block">
+          <LanguageSelector />
+        </div>
 
         {/* Avatar + dropdown */}
         <div className="relative" ref={menuRef}>
@@ -127,6 +130,52 @@ export function Topbar({
               >
                 {t('Tokens')}
               </Link>
+
+              {/* Idioma — só mobile (desktop tem botão dedicado no header) */}
+              <div className="md:hidden border-t border-border mt-1">
+                <button
+                  onClick={() => setLangOpen((v) => !v)}
+                  className="w-full px-4 py-2 text-sm hover:bg-secondary/50 flex items-center justify-between"
+                >
+                  <span className="flex items-center gap-2">
+                    <Globe className="w-3.5 h-3.5 text-muted-foreground" />
+                    {LANGUAGES.find((l) => l.code === lang)?.flag}{' '}
+                    {LANGUAGES.find((l) => l.code === lang)?.label}
+                  </span>
+                  <ChevronDown
+                    className={`w-3 h-3 text-muted-foreground transition-transform ${
+                      langOpen ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+                {langOpen && (
+                  <div className="bg-secondary/30">
+                    {LANGUAGES.map((l) => {
+                      const active = l.code === lang;
+                      return (
+                        <button
+                          key={l.code}
+                          onClick={() => {
+                            setLang(l.code as Lang);
+                            setLangOpen(false);
+                            setMenuOpen(false);
+                          }}
+                          className={`w-full pl-9 pr-4 py-1.5 text-sm flex items-center justify-between hover:bg-secondary/50 ${
+                            active ? 'text-primary' : ''
+                          }`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className="text-base leading-none">{l.flag}</span>
+                            {l.label}
+                          </span>
+                          {active && <Check className="w-3.5 h-3.5 text-primary" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               <div className="my-1 border-t border-border" />
               <button
                 onClick={logout}
