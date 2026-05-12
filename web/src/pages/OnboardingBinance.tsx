@@ -101,14 +101,14 @@ export default function OnboardingBinance() {
               </h1>
               <p className="text-sm text-muted-foreground mb-6">
                 Suas chaves são criptografadas em <span className="text-foreground">AES-256-GCM</span> antes de serem
-                salvas. Comece sempre pela <span className="text-primary">Testnet</span>.
+                salvas.
               </p>
 
               {/* Tutorial colapsado */}
               <details className="rounded-xl border border-border bg-secondary/20 px-4 py-3 mb-5 text-sm">
                 <summary className="cursor-pointer font-medium flex items-center gap-2">
                   <Key className="w-4 h-4 text-primary" />
-                  Como gerar suas chaves (testnet)
+                  Como gerar suas chaves
                 </summary>
                 <ol className="mt-3 space-y-2 text-muted-foreground list-decimal list-inside">
                   <li>
@@ -145,7 +145,7 @@ export default function OnboardingBinance() {
                           : 'border-border text-muted-foreground hover:border-primary/40'
                       }`}
                     >
-                      {m === 'testnet' ? 'Testnet (recomendado)' : 'Produção (real)'}
+                      {m === 'testnet' ? 'Modo demo (recomendado)' : 'Produção (real)'}
                     </button>
                   ))}
                 </div>

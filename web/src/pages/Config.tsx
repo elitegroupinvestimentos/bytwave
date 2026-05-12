@@ -201,7 +201,7 @@ export default function Config() {
               <>
                 <span className="font-semibold text-accent">Binance conectada</span>{' '}
                 <span className="text-muted-foreground">
-                  ({binStatus.keys.map((k) => k.mode).join(', ')}) — chaves criptografadas e prontas pra operar.
+                  — chaves criptografadas e prontas pra operar.
                 </span>
               </>
             ) : (
@@ -346,12 +346,11 @@ export default function Config() {
         >
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Key className="w-4 h-4 text-primary" />
-            Chaves Binance (Testnet)
+            Chaves Binance
           </div>
 
           <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-4 py-3 text-xs text-yellow-200/90">
-            ⚠️ Use chaves do <strong>testnet</strong> primeiro: testnet.binancefuture.com.
-            Suas chaves são criptografadas em AES-256-GCM antes de ir para o banco.
+            ⚠️ Suas chaves são criptografadas em AES-256-GCM antes de ir para o banco.
           </div>
 
           <div>
