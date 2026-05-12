@@ -436,9 +436,9 @@ function ModeCard({
   const isCons = kind === 'conservador';
   const title = isCons ? 'Conservador' : 'Agressivo';
   const subtitle = isCons
-    ? 'Menor risco · sobrevivência da conta. Crescimento gradual da posição.'
-    : 'Maior potencial de lucro · maior risco. Crescimento rápido da posição.';
-  const tag = isCons ? 'SAFE MODE' : 'EXTREME RISK';
+    ? 'Mais segurança e menor exposição'
+    : 'Mais rentabilidade e maior exposição';
+  const tag = isCons ? 'SAFE MODE' : 'HIGHER PROFITS';
   const Icon = isCons ? Shield : Flame;
 
   const activeBorder = isCons ? 'border-accent bg-accent/10' : 'border-red-500 bg-red-500/10';

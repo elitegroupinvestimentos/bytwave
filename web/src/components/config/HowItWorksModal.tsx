@@ -152,7 +152,7 @@ function ModeBlock({ kind }: { kind: 'conservador' | 'agressivo' }) {
               : 'border-red-500/40 text-red-300'
           }`}
         >
-          {isCons ? 'Safe Mode' : 'Extreme Risk'}
+          {isCons ? 'Safe Mode' : 'Higher Profits'}
         </span>
       </div>
 

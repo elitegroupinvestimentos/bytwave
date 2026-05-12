@@ -277,7 +277,7 @@ function ModeBadge({ mode }: { mode: RiskMode }) {
   return (
     <div className="flex items-center gap-1.5 rounded-full border border-red-500/40 bg-red-500/10 px-3 py-1 text-[10px] font-display font-semibold tracking-[0.2em] uppercase text-red-300">
       <Flame className="w-3 h-3" />
-      Extreme Risk
+      Higher Profits
     </div>
   );
 }
