@@ -48,6 +48,7 @@ export default function Config() {
   // Binance keys form
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
+  const [showKey, setShowKey] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
   const [savingKeys, setSavingKeys] = useState(false);
   const [keysFeedback, setKeysFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
@@ -385,12 +386,24 @@ export default function Config() {
             <label className="block text-[10px] font-display font-semibold tracking-[0.2em] uppercase text-muted-foreground mb-1.5">
               API Key
             </label>
-            <input
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="começa com letras/números"
-              className="w-full bg-secondary/30 border border-border rounded-xl px-3 py-2.5 outline-none focus:border-primary/50 transition-colors text-sm font-mono"
-            />
+            <div className="relative">
+              <input
+                type={showKey ? 'text' : 'password'}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="••••••••••••"
+                autoComplete="off"
+                className="w-full bg-secondary/30 border border-border rounded-xl px-3 py-2.5 pr-10 outline-none focus:border-primary/50 transition-colors text-sm font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => setShowKey((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
+                aria-label="mostrar/ocultar"
+              >
+                {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           <div>
