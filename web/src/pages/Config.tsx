@@ -344,14 +344,42 @@ export default function Config() {
           onSubmit={saveKeys}
           className="rounded-2xl border border-border bg-card/40 p-6 space-y-5"
         >
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Key className="w-4 h-4 text-primary" />
-            Chaves Binance
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Key className="w-4 h-4 text-primary" />
+              Chaves Binance
+            </div>
+            {binStatus?.connected && (
+              <span className="text-[10px] font-display font-semibold tracking-[0.2em] uppercase px-2 py-1 rounded-md border border-accent/40 bg-accent/10 text-accent flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" />
+                Salva
+              </span>
+            )}
           </div>
 
-          <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-4 py-3 text-xs text-yellow-200/90">
-            ⚠️ Suas chaves são criptografadas em AES-256-GCM antes de ir para o banco.
-          </div>
+          {binStatus?.connected && binStatus.keys.length > 0 ? (
+            <div className="rounded-xl border border-accent/30 bg-accent/5 px-4 py-3 text-xs space-y-1">
+              <div className="flex items-center gap-2 text-accent font-semibold">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Chave salva e ativa
+              </div>
+              {binStatus.keys.map((k, i) => (
+                <div key={i} className="text-muted-foreground">
+                  Cadastrada em{' '}
+                  <span className="font-mono text-foreground">
+                    {new Date(k.created_at).toLocaleString('pt-BR')}
+                  </span>
+                </div>
+              ))}
+              <div className="text-muted-foreground/70 pt-1">
+                Pra trocar, cole novas chaves abaixo e salve — a anterior é substituída automaticamente.
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-4 py-3 text-xs text-yellow-200/90">
+              ⚠️ Suas chaves são criptografadas em AES-256-GCM antes de ir para o banco.
+            </div>
+          )}
 
           <div>
             <label className="block text-[10px] font-display font-semibold tracking-[0.2em] uppercase text-muted-foreground mb-1.5">
