@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Lock,
   Loader2,
@@ -24,19 +24,24 @@ export function DrawdownProtection({ userId }: Props) {
   const [limitPct, setLimitPct] = useState<number>(10);
   const [limitUsd, setLimitUsd] = useState<number>(50);
   const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
+  const hydratedRef = useRef(false);
 
   useEffect(() => {
     let alive = true;
-    const load = async () => {
+    const load = async (hydrateForm: boolean) => {
       try {
         const s = await api.drawdownGet(userId);
         if (!alive) return;
         if (s) {
           setState(s);
-          setEnabled(s.enabled);
-          setType(s.type);
-          setLimitPct(s.limit_pct);
-          setLimitUsd(s.limit_usd);
+          // Só sobrescreve campos do form na 1ª carga (ou após reset manual
+          // via reload), pra não interromper edição do usuário entre polls.
+          if (hydrateForm) {
+            setEnabled(s.enabled);
+            setType(s.type);
+            setLimitPct(s.limit_pct);
+            setLimitUsd(s.limit_usd);
+          }
         }
       } catch {
         // ignora
@@ -44,8 +49,10 @@ export function DrawdownProtection({ userId }: Props) {
         if (alive) setLoading(false);
       }
     };
-    load();
-    const id = setInterval(load, 8000);
+    load(!hydratedRef.current).then(() => {
+      hydratedRef.current = true;
+    });
+    const id = setInterval(() => load(false), 8000);
     return () => {
       alive = false;
       clearInterval(id);
