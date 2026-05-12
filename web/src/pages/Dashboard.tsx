@@ -394,7 +394,7 @@ export default function Dashboard() {
           icon={TrendingUp}
           label="Lucro Realizado"
           value={`$${perf.realized.toFixed(2)}`}
-          subtitle={perf.realized === 0 ? 'aguardando TP' : undefined}
+          subtitle="total encerrado"
           accent={perf.realized >= 0 ? 'accent' : 'red'}
         />
         <StatCard
