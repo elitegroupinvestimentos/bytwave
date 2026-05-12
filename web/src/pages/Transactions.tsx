@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ArrowLeftRight, Filter } from 'lucide-react';
 import { DashboardLayout } from '../components/dashboard/DashboardLayout';
-import { OpenOrdersTable } from '../components/dashboard/OpenOrdersTable';
+import { OpenPositionsTable } from '../components/dashboard/OpenPositionsTable';
 import { api } from '../api/client';
 import { useSession } from '../hooks/useSession';
 import { Navigate } from 'react-router-dom';
@@ -13,27 +13,28 @@ export default function Transactions() {
   if (!session) return <Navigate to="/login" replace />;
   const userId = session.user_id;
   const [tab, setTab] = useState<Tab>('open');
-  const [open, setOpen] = useState<any[]>([]);
+  const [positions, setPositions] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);
+
+  const load = useCallback(async () => {
+    const [pos, h] = await Promise.all([
+      api.positions(userId).catch(() => []),
+      api.history(userId, 200).catch(() => []),
+    ]);
+    setPositions(pos as any[]);
+    setHistory(h as any[]);
+  }, [userId]);
 
   useEffect(() => {
     let alive = true;
-    const load = async () => {
-      const [oo, h] = await Promise.all([
-        api.openOrders(userId).catch(() => []),
-        api.history(userId, 200).catch(() => []),
-      ]);
-      if (!alive) return;
-      setOpen(oo as any[]);
-      setHistory(h as any[]);
-    };
-    load();
-    const id = setInterval(load, 5000);
+    const tick = () => alive && load();
+    tick();
+    const id = setInterval(tick, 5000);
     return () => {
       alive = false;
       clearInterval(id);
     };
-  }, [userId]);
+  }, [load]);
 
   return (
     <DashboardLayout title="Transações">
@@ -41,7 +42,7 @@ export default function Transactions() {
         <div className="flex gap-1 bg-secondary/40 p-1 rounded-full">
           {(
             [
-              { v: 'open', label: 'Abertas', count: open.length },
+              { v: 'open', label: 'Abertas', count: positions.length },
               { v: 'history', label: 'Histórico', count: history.length },
             ] as { v: Tab; label: string; count: number }[]
           ).map((t) => (
@@ -66,7 +67,7 @@ export default function Transactions() {
       </div>
 
       {tab === 'open' ? (
-        <OpenOrdersTable orders={open} />
+        <OpenPositionsTable positions={positions} userId={userId} onClosed={load} />
       ) : (
         <HistoryTable orders={history} />
       )}
