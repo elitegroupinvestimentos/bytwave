@@ -1,21 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  Activity,
-  Trophy,
-  TrendingUp,
-  ArrowDown,
-  Flame,
-  Wallet,
-} from 'lucide-react';
+import { Flame } from 'lucide-react';
 import { DashboardLayout } from '../components/dashboard/DashboardLayout';
 import { SymbolHeader } from '../components/dashboard/SymbolHeader';
 import { CycleCard } from '../components/dashboard/CycleCard';
 import { PriceChart } from '../components/dashboard/PriceChart';
 import { PositionCard, PositionData } from '../components/dashboard/PositionCard';
-import { StatCard } from '../components/dashboard/StatCard';
 import { BankUsage } from '../components/dashboard/BankUsage';
 import { CycleHistory, CycleHistoryItem } from '../components/dashboard/CycleHistory';
-import { DateFilter, DateRange, ALL_TIME } from '../components/dashboard/DateFilter';
 import { OpenPositionsTable } from '../components/dashboard/OpenPositionsTable';
 import { api, ApiError, fetchKlines, getSession } from '../api/client';
 import { useSession } from '../hooks/useSession';
@@ -69,8 +60,6 @@ export default function Dashboard() {
   const [openOrders, setOpenOrders] = useState<any[]>([]);
   const [positions, setPositions] = useState<any[]>([]);
   const [history, setHistory] = useState<CycleHistoryItem[]>([]);
-  const [dateRange, setDateRange] = useState<DateRange>(ALL_TIME);
-  const [filteredRealized, setFilteredRealized] = useState(0);
   const [perf, setPerf] = useState({
     realized: 0,
     unrealized: 0,
@@ -86,13 +75,7 @@ export default function Dashboard() {
         const [bal, st, closedCycles, oo, pnl, pos] = await Promise.all([
           api.testBinance(userId).catch(() => null),
           api.status(userId).catch(() => ({ open_cycles: [] })),
-          api
-            .closedCycles(userId, {
-              limit: 100,
-              start: dateRange.start ?? undefined,
-              end: dateRange.end ?? undefined,
-            })
-            .catch(() => []),
+          api.closedCycles(userId, { limit: 20 }).catch(() => []),
           api.openOrders(userId).catch(() => []),
           api.pnl(userId).catch(() => null),
           api.positions(userId).catch(() => []),
@@ -111,7 +94,7 @@ export default function Dashboard() {
           });
         }
 
-        // Histórico = ciclos fechados dentro do período selecionado.
+        // Últimos ciclos fechados (limite curto pro card de histórico).
         const cs = closedCycles as any[];
         setHistory(
           cs.slice(0, 4).map((c, i) => ({
@@ -124,11 +107,6 @@ export default function Dashboard() {
               : '—',
           })),
         );
-        const totalInRange = cs.reduce(
-          (s, c) => s + Number(c.realized_pnl_usdt ?? 0),
-          0,
-        );
-        setFilteredRealized(totalInRange);
       } catch {
         // segue
       }
@@ -139,7 +117,7 @@ export default function Dashboard() {
       alive = false;
       clearInterval(id);
     };
-  }, [dateRange.start, dateRange.end]);
+  }, []);
 
   // Auto-dismiss do feedback após 5s
   useEffect(() => {
@@ -288,9 +266,6 @@ export default function Dashboard() {
 
   return (
     <DashboardLayout title="Dashboard" balance={balance}>
-      {/* Filtro de período */}
-      <DateFilter range={dateRange} onChange={setDateRange} />
-
       {/* Seletor de par (aparece se tiver mais de uma estratégia configurada) */}
       {availableSymbols.length > 1 && (
         <div className="flex items-center gap-2 text-sm">
@@ -386,49 +361,7 @@ export default function Dashboard() {
         <PositionCard data={short} />
       </div>
 
-      {/* Linha 3: 6 stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <StatCard
-          icon={Activity}
-          label="Byts"
-          value={String(history.length + openCycles.length)}
-          subtitle={`${openCycles.length} aberto${openCycles.length === 1 ? '' : 's'} / ${history.length} fechado${history.length === 1 ? '' : 's'}`}
-        />
-        <StatCard
-          icon={Trophy}
-          label="Win Rate"
-          value={`${winRate(history)}%`}
-          subtitle={history.length === 0 ? 'sem ciclos fechados' : undefined}
-        />
-        <StatCard
-          icon={TrendingUp}
-          label="PnL Flutuante"
-          value={`${perf.unrealized >= 0 ? '+' : ''}$${perf.unrealized.toFixed(2)}`}
-          subtitle="em andamento"
-          accent={perf.unrealized >= 0 ? 'accent' : 'red'}
-        />
-        <StatCard
-          icon={TrendingUp}
-          label="Lucro Realizado"
-          value={`$${filteredRealized.toFixed(2)}`}
-          subtitle={dateRange.label === 'Tudo' ? 'total encerrado' : `período: ${dateRange.label}`}
-          accent={filteredRealized >= 0 ? 'accent' : 'red'}
-        />
-        <StatCard
-          icon={ArrowDown}
-          label="DCAs Exec."
-          value={String(long.dca + short.dca)}
-          subtitle="safety orders"
-        />
-        <StatCard
-          icon={Wallet}
-          label="Capital"
-          value={`$${balance.toFixed(2)}`}
-          subtitle="Saldo Binance"
-        />
-      </div>
-
-      {/* Linha 4: Posições abertas (consultadas direto da Binance) */}
+      {/* Posições abertas (consultadas direto da Binance) */}
       <OpenPositionsTable
         positions={positions}
         userId={userId}
@@ -451,10 +384,4 @@ export default function Dashboard() {
       </div>
     </DashboardLayout>
   );
-}
-
-function winRate(history: CycleHistoryItem[]): string {
-  if (history.length === 0) return '0';
-  const wins = history.filter((h) => h.pnl > 0).length;
-  return ((wins / history.length) * 100).toFixed(0);
 }

@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard';
 import Finance from './pages/Finance';
 import Config from './pages/Config';
 import Transactions from './pages/Transactions';
+import Stats from './pages/Stats';
 import Marketing from './pages/Marketing';
 
 import AdminLogin from './pages/admin/AdminLogin';
@@ -53,6 +54,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <Transactions />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/stats"
+          element={
+            <ProtectedRoute>
+              <Stats />
             </ProtectedRoute>
           }
         />

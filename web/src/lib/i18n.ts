@@ -21,6 +21,7 @@ const DICT: Record<Lang, Record<string, string>> = {
   en: {
     'Dashboard': 'Dashboard',
     'Menu': 'Menu',
+    'Estatísticas': 'Statistics',
     'Marketing': 'Marketing',
     'Config': 'Config',
     'Finance': 'Finance',
@@ -66,6 +67,7 @@ const DICT: Record<Lang, Record<string, string>> = {
   es: {
     'Dashboard': 'Panel',
     'Menu': 'Menú',
+    'Estatísticas': 'Estadísticas',
     'Marketing': 'Marketing',
     'Config': 'Config',
     'Finance': 'Finanzas',
@@ -111,6 +113,7 @@ const DICT: Record<Lang, Record<string, string>> = {
   zh: {
     'Dashboard': '仪表盘',
     'Menu': '菜单',
+    'Estatísticas': '统计',
     'Marketing': '营销',
     'Config': '设置',
     'Finance': '财务',
@@ -156,6 +159,7 @@ const DICT: Record<Lang, Record<string, string>> = {
   fr: {
     'Dashboard': 'Tableau de bord',
     'Menu': 'Menu',
+    'Estatísticas': 'Statistiques',
     'Marketing': 'Marketing',
     'Config': 'Config',
     'Finance': 'Finance',

@@ -1,10 +1,11 @@
-import { ChevronLeft, LayoutGrid, ArrowLeftRight, TrendingUp, Megaphone, Settings, X } from 'lucide-react';
+import { ChevronLeft, LayoutGrid, ArrowLeftRight, TrendingUp, Megaphone, Settings, BarChart3, X } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { LogoMark } from '../Logo';
 import { useI18n } from '../../lib/i18n';
 
 const items = [
   { to: '/dashboard',   icon: LayoutGrid,     label: 'Menu' },
+  { to: '/stats',       icon: BarChart3,      label: 'Estatísticas' },
   { to: '/transactions',icon: ArrowLeftRight, label: 'Transações' },
   { to: '/finance',     icon: TrendingUp,     label: 'Finance' },
   { to: '/marketing',   icon: Megaphone,      label: 'Marketing' },
