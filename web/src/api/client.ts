@@ -51,8 +51,15 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   health: () => http<{ ok: true; mode: string }>('/health'),
   status: (userId: string) => http<{ open_cycles: any[] }>(`/status/${userId}`),
-  closedCycles: (userId: string, limit = 50) =>
-    http<
+  closedCycles: (
+    userId: string,
+    opts: { limit?: number; start?: string; end?: string } = {},
+  ) => {
+    const qs = new URLSearchParams();
+    qs.set('limit', String(opts.limit ?? 50));
+    if (opts.start) qs.set('start', opts.start);
+    if (opts.end) qs.set('end', opts.end);
+    return http<
       Array<{
         id: string;
         symbol: string;
@@ -61,7 +68,8 @@ export const api = {
         closed_at: string;
         opened_at: string;
       }>
-    >(`/cycles/closed/${userId}?limit=${limit}`),
+    >(`/cycles/closed/${userId}?${qs.toString()}`);
+  },
   openOrders: (userId: string) => http<any[]>(`/orders/open/${userId}`),
   history: (userId: string, limit = 200) =>
     http<any[]>(`/orders/history/${userId}?limit=${limit}`),

@@ -598,7 +598,9 @@ router.get(
   requireSelf((req) => req.params.user_id),
   ah(async (req, res) => {
     const limit = Number(req.query.limit ?? 50);
-    const cycles = await listClosedCyclesForUser(req.params.user_id, limit);
+    const start = typeof req.query.start === 'string' ? req.query.start : undefined;
+    const end = typeof req.query.end === 'string' ? req.query.end : undefined;
+    const cycles = await listClosedCyclesForUser(req.params.user_id, limit, start, end);
     res.json(cycles);
   }),
 );

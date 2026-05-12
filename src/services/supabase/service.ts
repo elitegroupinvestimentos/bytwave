@@ -226,14 +226,22 @@ export async function listOpenCyclesForUser(user_id: string) {
   return (data ?? []) as CycleRow[];
 }
 
-export async function listClosedCyclesForUser(user_id: string, limit = 50) {
-  const { data, error } = await supabase
+export async function listClosedCyclesForUser(
+  user_id: string,
+  limit = 50,
+  start?: string,
+  end?: string,
+) {
+  let q = supabase
     .from('cycles')
     .select('*')
     .eq('user_id', user_id)
     .eq('status', 'closed')
     .order('closed_at', { ascending: false })
     .limit(limit);
+  if (start) q = q.gte('closed_at', start);
+  if (end) q = q.lte('closed_at', end);
+  const { data, error } = await q;
   if (error) throw error;
   return (data ?? []) as CycleRow[];
 }

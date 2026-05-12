@@ -15,6 +15,7 @@ import { PositionCard, PositionData } from '../components/dashboard/PositionCard
 import { StatCard } from '../components/dashboard/StatCard';
 import { BankUsage } from '../components/dashboard/BankUsage';
 import { CycleHistory, CycleHistoryItem } from '../components/dashboard/CycleHistory';
+import { DateFilter, DateRange, ALL_TIME } from '../components/dashboard/DateFilter';
 import { OpenPositionsTable } from '../components/dashboard/OpenPositionsTable';
 import { api, ApiError, fetchKlines, getSession } from '../api/client';
 import { useSession } from '../hooks/useSession';
@@ -68,6 +69,8 @@ export default function Dashboard() {
   const [openOrders, setOpenOrders] = useState<any[]>([]);
   const [positions, setPositions] = useState<any[]>([]);
   const [history, setHistory] = useState<CycleHistoryItem[]>([]);
+  const [dateRange, setDateRange] = useState<DateRange>(ALL_TIME);
+  const [filteredRealized, setFilteredRealized] = useState(0);
   const [perf, setPerf] = useState({
     realized: 0,
     unrealized: 0,
@@ -83,7 +86,13 @@ export default function Dashboard() {
         const [bal, st, closedCycles, oo, pnl, pos] = await Promise.all([
           api.testBinance(userId).catch(() => null),
           api.status(userId).catch(() => ({ open_cycles: [] })),
-          api.closedCycles(userId, 20).catch(() => []),
+          api
+            .closedCycles(userId, {
+              limit: 100,
+              start: dateRange.start ?? undefined,
+              end: dateRange.end ?? undefined,
+            })
+            .catch(() => []),
           api.openOrders(userId).catch(() => []),
           api.pnl(userId).catch(() => null),
           api.positions(userId).catch(() => []),
@@ -102,8 +111,7 @@ export default function Dashboard() {
           });
         }
 
-        // Histórico = últimos 4 ciclos fechados (status=closed) com PnL real.
-        // Cobre tanto fechamento via TP automático quanto fechamento manual.
+        // Histórico = ciclos fechados dentro do período selecionado.
         const cs = closedCycles as any[];
         setHistory(
           cs.slice(0, 4).map((c, i) => ({
@@ -116,6 +124,11 @@ export default function Dashboard() {
               : '—',
           })),
         );
+        const totalInRange = cs.reduce(
+          (s, c) => s + Number(c.realized_pnl_usdt ?? 0),
+          0,
+        );
+        setFilteredRealized(totalInRange);
       } catch {
         // segue
       }
@@ -126,7 +139,7 @@ export default function Dashboard() {
       alive = false;
       clearInterval(id);
     };
-  }, []);
+  }, [dateRange.start, dateRange.end]);
 
   // Auto-dismiss do feedback após 5s
   useEffect(() => {
@@ -275,6 +288,9 @@ export default function Dashboard() {
 
   return (
     <DashboardLayout title="Dashboard" balance={balance}>
+      {/* Filtro de período */}
+      <DateFilter range={dateRange} onChange={setDateRange} />
+
       {/* Seletor de par (aparece se tiver mais de uma estratégia configurada) */}
       {availableSymbols.length > 1 && (
         <div className="flex items-center gap-2 text-sm">
@@ -394,9 +410,9 @@ export default function Dashboard() {
         <StatCard
           icon={TrendingUp}
           label="Lucro Realizado"
-          value={`$${perf.realized.toFixed(2)}`}
-          subtitle="total encerrado"
-          accent={perf.realized >= 0 ? 'accent' : 'red'}
+          value={`$${filteredRealized.toFixed(2)}`}
+          subtitle={dateRange.label === 'Tudo' ? 'total encerrado' : `período: ${dateRange.label}`}
+          accent={filteredRealized >= 0 ? 'accent' : 'red'}
         />
         <StatCard
           icon={ArrowDown}
