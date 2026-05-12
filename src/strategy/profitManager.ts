@@ -2,12 +2,16 @@ import type { CycleSide, StrategyConfig } from '../types';
 
 /**
  * Preço alvo de take-profit a partir do preço médio.
- *  - LONG: acima do avg
- *  - SHORT: abaixo do avg
+ *  - target_profit_pct é o % de LUCRO sobre a MARGEM (PnL % alavancado),
+ *    igual ao que aparece na Binance.
+ *  - Movimento de preço necessário = target / leverage.
+ *  - LONG: acima do avg. SHORT: abaixo do avg.
  */
 export function takeProfitPrice(cfg: StrategyConfig, avgPrice: number, side: CycleSide): number {
   const dir = side === 'LONG' ? 1 : -1;
-  return avgPrice * (1 + (dir * cfg.target_profit_pct) / 100);
+  const lev = cfg.leverage > 0 ? cfg.leverage : 1;
+  const priceMovePct = cfg.target_profit_pct / lev;
+  return avgPrice * (1 + (dir * priceMovePct) / 100);
 }
 
 /**
