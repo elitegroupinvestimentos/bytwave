@@ -102,11 +102,11 @@ export default function Dashboard() {
           });
         }
 
-        // Histórico = ciclos fechados (status=closed) com PnL real.
+        // Histórico = últimos 4 ciclos fechados (status=closed) com PnL real.
         // Cobre tanto fechamento via TP automático quanto fechamento manual.
         const cs = closedCycles as any[];
         setHistory(
-          cs.slice(0, 8).map((c, i) => ({
+          cs.slice(0, 4).map((c, i) => ({
             id: c.id,
             number: cs.length - i,
             side: c.side,
