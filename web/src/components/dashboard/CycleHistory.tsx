@@ -18,7 +18,7 @@ export function CycleHistory({ items }: { items: CycleHistoryItem[] }) {
       <div className="flex items-center justify-between gap-2 mb-5 flex-wrap">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <TrendingUp className="w-4 h-4 text-primary" />
-          Histórico de Lucro
+          Histórico de Posições Fechadas
         </div>
         {items.length > 0 && (
           <div className="flex items-center gap-3 text-[11px] font-mono">
@@ -41,7 +41,7 @@ export function CycleHistory({ items }: { items: CycleHistoryItem[] }) {
 
       {items.length === 0 ? (
         <div className="py-12 text-center text-sm text-muted-foreground">
-          Nenhum lucro registrado ainda.
+          Nenhuma posição fechada ainda.
         </div>
       ) : (
         <ul className="divide-y divide-border">
