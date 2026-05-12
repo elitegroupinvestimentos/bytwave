@@ -19,6 +19,8 @@ import {
   listOrderHistory,
   listOpenCyclesForUser,
   getPerformanceSummary,
+  getOpenCycle,
+  updateCycle,
 } from '../services/supabase/service';
 import { getBinanceClient, invalidateBinanceClient } from '../services/binance/factory';
 import { botLog } from '../services/logs/logger';
@@ -255,6 +257,9 @@ router.post(
     for (const p of targets) {
       const amt = Number(p.positionAmt);
       const isLong = amt > 0 || p.positionSide === 'LONG';
+      // Capturado ANTES do market de fechamento: vira o PnL realizado
+      // efetivo, igual ao que a Binance vai registrar.
+      const pnlAtClose = Number(p.unrealizedProfit ?? 0);
       try {
         await client.placeOrder({
           symbol: p.symbol,
@@ -263,7 +268,41 @@ router.post(
           type: 'MARKET',
           quantity: Math.abs(amt),
         });
-        closed.push({ symbol: p.symbol, side: p.positionSide, qty: Math.abs(amt) });
+        closed.push({
+          symbol: p.symbol,
+          side: p.positionSide,
+          qty: Math.abs(amt),
+          pnl: pnlAtClose,
+        });
+
+        // Atualiza ciclo correspondente no DB com o PnL real.
+        // Evita que a reconciliação no engine use markPrice/tickerPrice
+        // como proxy (que pode dar 0 ou impreciso).
+        try {
+          const cycle = await getOpenCycle(body.user_id, p.symbol, p.positionSide);
+          if (cycle) {
+            await updateCycle(cycle.id, {
+              status: 'closed',
+              closed_at: new Date().toISOString(),
+              realized_pnl_usdt: pnlAtClose,
+            });
+            await botLog({
+              level: 'info',
+              scope: 'api',
+              user_id: body.user_id,
+              cycle_id: cycle.id,
+              message: `Ciclo ${p.positionSide} fechado manualmente. PnL = ${pnlAtClose.toFixed(4)} USDT`,
+            });
+          }
+        } catch (dbErr: any) {
+          // Não falha o fechamento se DB der erro — só loga.
+          await botLog({
+            level: 'warn',
+            scope: 'api',
+            user_id: body.user_id,
+            message: `Falha ao atualizar ciclo após fechamento manual: ${dbErr.message}`,
+          });
+        }
       } catch (e: any) {
         errors.push({ symbol: p.symbol, side: p.positionSide, err: e.message });
       }
