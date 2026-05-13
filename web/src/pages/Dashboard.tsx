@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Flame } from 'lucide-react';
+import { Flame, Activity, Trophy, TrendingUp, ArrowDown, Wallet } from 'lucide-react';
 import { DashboardLayout } from '../components/dashboard/DashboardLayout';
 import { SymbolHeader } from '../components/dashboard/SymbolHeader';
 import { CycleCard } from '../components/dashboard/CycleCard';
 import { PriceChart } from '../components/dashboard/PriceChart';
 import { PositionCard, PositionData } from '../components/dashboard/PositionCard';
+import { StatCard } from '../components/dashboard/StatCard';
 import { BankUsage } from '../components/dashboard/BankUsage';
 import { CycleHistory, CycleHistoryItem } from '../components/dashboard/CycleHistory';
 import { OpenPositionsTable } from '../components/dashboard/OpenPositionsTable';
@@ -361,6 +362,48 @@ export default function Dashboard() {
         <PositionCard data={short} />
       </div>
 
+      {/* 6 stat cards (totais — para filtro por período ver /stats) */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <StatCard
+          icon={Activity}
+          label="Byts"
+          value={String(history.length + openCycles.length)}
+          subtitle={`${openCycles.length} aberto${openCycles.length === 1 ? '' : 's'} / ${history.length} fechado${history.length === 1 ? '' : 's'}`}
+        />
+        <StatCard
+          icon={Trophy}
+          label="Win Rate"
+          value={`${dashWinRate(history)}%`}
+          subtitle={history.length === 0 ? 'sem ciclos fechados' : undefined}
+        />
+        <StatCard
+          icon={TrendingUp}
+          label="PnL Flutuante"
+          value={`${perf.unrealized >= 0 ? '+' : ''}$${perf.unrealized.toFixed(2)}`}
+          subtitle="em andamento"
+          accent={perf.unrealized >= 0 ? 'accent' : 'red'}
+        />
+        <StatCard
+          icon={TrendingUp}
+          label="Lucro Realizado"
+          value={`$${perf.realized.toFixed(2)}`}
+          subtitle="total encerrado"
+          accent={perf.realized >= 0 ? 'accent' : 'red'}
+        />
+        <StatCard
+          icon={ArrowDown}
+          label="DCAs Exec."
+          value={String(long.dca + short.dca)}
+          subtitle="safety orders"
+        />
+        <StatCard
+          icon={Wallet}
+          label="Capital"
+          value={`$${balance.toFixed(2)}`}
+          subtitle="Saldo Binance"
+        />
+      </div>
+
       {/* Posições abertas (consultadas direto da Binance) */}
       <OpenPositionsTable
         positions={positions}
@@ -384,4 +427,10 @@ export default function Dashboard() {
       </div>
     </DashboardLayout>
   );
+}
+
+function dashWinRate(history: CycleHistoryItem[]): string {
+  if (history.length === 0) return '0';
+  const wins = history.filter((h) => h.pnl > 0).length;
+  return ((wins / history.length) * 100).toFixed(0);
 }
