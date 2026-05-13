@@ -87,6 +87,23 @@ export async function runTick(): Promise<void> {
     // Persiste snapshot de conta (não-bloqueante para o tick).
     persistSnapshot(cfg.user_id, client).catch(() => {});
 
+    // Verifica se o ciclo HEDGE inteiro bateu a meta (soma LONG+SHORT)
+    // ANTES de processar cada lado isoladamente. Se sim, fecha as duas
+    // posições, marca os dois ciclos closed e o tick seguinte reabre.
+    if (cfg.status === 'running') {
+      try {
+        const closed = await checkHedgeCycleClose(cfg, client);
+        if (closed) continue; // pula processSide; próximo tick abre novo hedge
+      } catch (err: any) {
+        await botLog({
+          level: 'warn',
+          scope: 'engine',
+          user_id: cfg.user_id,
+          message: `checkHedgeCycleClose falhou: ${err?.message ?? err}`,
+        });
+      }
+    }
+
     for (const side of ['LONG', 'SHORT'] as CycleSide[]) {
       const key = lockKey(cfg, side);
       await withLock(key, async () => {
@@ -105,6 +122,124 @@ export async function runTick(): Promise<void> {
       });
     }
   }
+}
+
+// ─── Encerramento do ciclo HEDGE (soma LONG + SHORT vs meta) ───────────────
+//
+// Regra: o robô SEMPRE opera com BUY + SELL simultâneos. O fechamento
+// acontece quando a SOMA LÍQUIDA do PnL não realizado das duas posições
+// atingir `banca × target_profit_pct / 100`.
+//
+// Banca = totalWalletBalance (saldo de carteira, exclui PnL flutuante)
+// para meta estável e consistente.
+async function checkHedgeCycleClose(
+  cfg: StrategyConfig,
+  client: BinanceFuturesClient,
+): Promise<boolean> {
+  const acc: any = await client.accountInfo();
+  const positions: any[] = acc.positions ?? [];
+  const longPos = positions.find(
+    (p) => p.symbol === cfg.symbol && p.positionSide === 'LONG',
+  );
+  const shortPos = positions.find(
+    (p) => p.symbol === cfg.symbol && p.positionSide === 'SHORT',
+  );
+
+  const longQty = longPos ? Math.abs(Number(longPos.positionAmt ?? 0)) : 0;
+  const shortQty = shortPos ? Math.abs(Number(shortPos.positionAmt ?? 0)) : 0;
+  if (longQty === 0 && shortQty === 0) return false;
+
+  const longPnL = longPos ? Number(longPos.unrealizedProfit ?? 0) : 0;
+  const shortPnL = shortPos ? Number(shortPos.unrealizedProfit ?? 0) : 0;
+  const netPnL = longPnL + shortPnL;
+
+  const banca = Number(acc.totalWalletBalance ?? 0);
+  const meta = (banca * cfg.target_profit_pct) / 100;
+
+  await botLog({
+    level: 'info',
+    scope: 'engine',
+    user_id: cfg.user_id,
+    message: `Hedge check ${cfg.symbol}: LONG=${longPnL.toFixed(4)} | SHORT=${shortPnL.toFixed(4)} | NET=${netPnL.toFixed(4)} USDT | meta=${meta.toFixed(4)} (${cfg.target_profit_pct}% de $${banca.toFixed(2)})`,
+    data: { longPnL, shortPnL, netPnL, meta, banca, target_pct: cfg.target_profit_pct },
+  });
+
+  if (netPnL < meta) return false;
+
+  // ───── BATEU A META: FECHA AS DUAS POSIÇÕES ─────
+  if (longQty > 0) {
+    try {
+      await client.placeOrder({
+        symbol: cfg.symbol,
+        side: 'SELL',
+        positionSide: 'LONG',
+        type: 'MARKET',
+        quantity: longQty,
+      });
+    } catch (err: any) {
+      await botLog({
+        level: 'warn',
+        scope: 'engine',
+        user_id: cfg.user_id,
+        message: `Falha ao fechar LONG no hedge: ${err?.message ?? err}`,
+      });
+    }
+  }
+  if (shortQty > 0) {
+    try {
+      await client.placeOrder({
+        symbol: cfg.symbol,
+        side: 'BUY',
+        positionSide: 'SHORT',
+        type: 'MARKET',
+        quantity: shortQty,
+      });
+    } catch (err: any) {
+      await botLog({
+        level: 'warn',
+        scope: 'engine',
+        user_id: cfg.user_id,
+        message: `Falha ao fechar SHORT no hedge: ${err?.message ?? err}`,
+      });
+    }
+  }
+
+  // Cancela qualquer ordem pendente do par (SOs, TPs legados, etc).
+  await client.cancelAllOpen(cfg.symbol).catch(() => undefined);
+
+  // Marca os dois ciclos abertos como closed com PnL real de cada lado.
+  const longCycle = await getOpenCycle(cfg.user_id, cfg.symbol, 'LONG').catch(() => null);
+  const shortCycle = await getOpenCycle(cfg.user_id, cfg.symbol, 'SHORT').catch(() => null);
+  const closedAt = new Date().toISOString();
+  if (longCycle) {
+    await updateCycle(longCycle.id, {
+      status: 'closed',
+      closed_at: closedAt,
+      realized_pnl_usdt: longPnL,
+    });
+  }
+  if (shortCycle) {
+    await updateCycle(shortCycle.id, {
+      status: 'closed',
+      closed_at: closedAt,
+      realized_pnl_usdt: shortPnL,
+    });
+  }
+
+  // Cobra tokens só sobre o LUCRO LÍQUIDO (se for positivo).
+  if (netPnL > 0) {
+    const refCycleId = (longCycle ?? shortCycle)?.id;
+    if (refCycleId) await chargeForCycleProfit(cfg, refCycleId, netPnL);
+  }
+
+  await botLog({
+    level: 'info',
+    scope: 'engine',
+    user_id: cfg.user_id,
+    message: `🎯 Ciclo hedge ${cfg.symbol} ENCERRADO. LONG ${longPnL >= 0 ? '+' : ''}${longPnL.toFixed(4)} | SHORT ${shortPnL >= 0 ? '+' : ''}${shortPnL.toFixed(4)} | NET +${netPnL.toFixed(4)} >= meta ${meta.toFixed(4)} (banca $${banca.toFixed(2)} × ${cfg.target_profit_pct}%). Próximo tick reabre BUY+SELL.`,
+  });
+
+  return true;
 }
 
 /**
@@ -417,72 +552,11 @@ async function advanceCycle(
     filled_safety_count: filledSO,
   });
 
-  // Ações ATIVAS (trigger SOs, monitorar PnL) só rodam se bot estiver
-  // running. Se estiver paused/stopped, mantemos posição como está e só
-  // reconciliamos quando algo fechar manualmente.
+  // Ações ATIVAS (trigger SOs) só rodam se bot estiver running.
+  // O fechamento por TP é feito globalmente em checkHedgeCycleClose
+  // (lá em cima, no runTick), considerando a SOMA LONG+SHORT vs meta.
   if (cfg.status === 'running') {
-    // 2.5) Dispara próximas SOs como MARKET se o preço cruzou o nível.
     await triggerSafetyOrders(cfg, cycle, side, client, filters, refreshed);
-
-    // 3) MONITORA PnL%. Quando bate o target, fecha tudo a mercado.
-    // Não usamos mais ordem TAKE_PROFIT_MARKET na Binance — simplifica
-    // (evita -4120) e dá controle exato em cima do PnL alavancado.
-    if (totalQty > 0 && avg > 0) {
-      const positionsNow = await client.positions(cfg.symbol).catch(() => [] as any[]);
-      const sidePos = (positionsNow as any[]).find((p) => p.positionSide === side);
-      const realQty = sidePos ? Math.abs(Number(sidePos.positionAmt ?? 0)) : 0;
-
-      if (realQty > 0) {
-        const entryPrice = Number(sidePos.entryPrice ?? avg);
-        const unrealizedProfit = Number(sidePos.unrealizedProfit ?? 0);
-        const initialMargin = (entryPrice * realQty) / cfg.leverage;
-        const pnlPct = initialMargin > 0 ? (unrealizedProfit / initialMargin) * 100 : 0;
-
-        if (pnlPct >= cfg.target_profit_pct) {
-          // FECHA A MERCADO
-          const isLong = side === 'LONG';
-          try {
-            await client.placeOrder({
-              symbol: cfg.symbol,
-              side: isLong ? 'SELL' : 'BUY',
-              positionSide: side,
-              type: 'MARKET',
-              quantity: realQty,
-            });
-          } catch (err: any) {
-            await botLog({
-              level: 'warn',
-              scope: 'engine',
-              user_id: cfg.user_id,
-              cycle_id: cycle.id,
-              message: `Falha ao fechar ciclo no TP: ${err.message ?? err}`,
-            });
-            return;
-          }
-
-          // Cancela ordens pendentes do par
-          await client.cancelAllOpen(cfg.symbol).catch(() => undefined);
-
-          await updateCycle(cycle.id, {
-            status: 'closed',
-            closed_at: new Date().toISOString(),
-            realized_pnl_usdt: unrealizedProfit,
-          });
-
-          await chargeForCycleProfit(cfg, cycle.id, unrealizedProfit);
-
-          await botLog({
-            level: 'info',
-            scope: 'engine',
-            user_id: cfg.user_id,
-            cycle_id: cycle.id,
-            message: `🎯 Ciclo ${side} fechado no TP. PnL +${pnlPct.toFixed(3)}% ≈ ${unrealizedProfit.toFixed(4)} USDT. Próximo tick reabre.`,
-            data: { pnlPct, unrealizedProfit, target: cfg.target_profit_pct },
-          });
-          return;
-        }
-      }
-    }
   }
 
   // (Compat) Se ainda existir ordem TAKE_PROFIT antiga no DB e tiver
