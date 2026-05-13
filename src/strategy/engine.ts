@@ -20,7 +20,6 @@ import {
 } from '../services/supabase/drawdown';
 import { placeAndRecordOrder, refreshOrderStatus } from './orderManager';
 import { buildSafetyLadder, weightedAveragePrice } from './safetyOrderManager';
-import { takeProfitPrice } from './profitManager';
 import type { CycleRow, CycleSide, OrderRow, StrategyConfig } from '../types';
 import type { SymbolFilters } from '../utils/precision';
 
@@ -302,11 +301,9 @@ async function openCycle(
   });
 
   // SOs NÃO são colocadas no book aqui — o bot vai DISPARAR cada SO como
-  // MARKET no advanceCycle quando o preço cruzar o nível. Isso evita N
-  // ordens pendentes (só o TP fica no book).
-
-  // TP inicial — será reajustado conforme preço médio mudar
-  await refreshAndPlaceTakeProfit(cfg, cycle.id, side, client, filters, refPrice, baseQty);
+  // MARKET no advanceCycle quando o preço cruzar o nível.
+  // TP também NÃO vai pro book — monitoramos PnL% direto da Binance a
+  // cada tick e fechamos a mercado quando bate o target_profit_pct.
 
   await botLog({
     level: 'info',
@@ -420,41 +417,76 @@ async function advanceCycle(
     filled_safety_count: filledSO,
   });
 
-  // Ações ATIVAS (trigger SOs, recolocar TP) só rodam se bot estiver running.
-  // Se estiver paused/stopped, mantemos posição/ordem como estão e só
-  // reconciliamos quando algo fechar (manual ou TP).
+  // Ações ATIVAS (trigger SOs, monitorar PnL) só rodam se bot estiver
+  // running. Se estiver paused/stopped, mantemos posição como está e só
+  // reconciliamos quando algo fechar manualmente.
   if (cfg.status === 'running') {
     // 2.5) Dispara próximas SOs como MARKET se o preço cruzou o nível.
     await triggerSafetyOrders(cfg, cycle, side, client, filters, refreshed);
 
-    // 3) Ajusta o TAKE_PROFIT se preço médio mudou
-    const tp = refreshed.find((o) => o.role === 'TAKE_PROFIT');
-    const newTpPrice = takeProfitPrice(cfg, avg || 0, side);
-    if (avg > 0 && tp && tp.status !== 'FILLED') {
-      const tpPrice = Number(tp.stop_price ?? tp.price ?? 0);
-      const driftPct = tpPrice > 0 ? Math.abs(tpPrice - newTpPrice) / tpPrice : 1;
-      // Se drift > 0.05% recoloca o TP.
-      if (driftPct > 0.0005) {
-        try {
-          if (tp.binance_order_id) {
-            await client.cancelOrder(cfg.symbol, tp.binance_order_id).catch(() => undefined);
-            await updateOrder(tp.id, { status: 'CANCELED' });
+    // 3) MONITORA PnL%. Quando bate o target, fecha tudo a mercado.
+    // Não usamos mais ordem TAKE_PROFIT_MARKET na Binance — simplifica
+    // (evita -4120) e dá controle exato em cima do PnL alavancado.
+    if (totalQty > 0 && avg > 0) {
+      const positionsNow = await client.positions(cfg.symbol).catch(() => [] as any[]);
+      const sidePos = (positionsNow as any[]).find((p) => p.positionSide === side);
+      const realQty = sidePos ? Math.abs(Number(sidePos.positionAmt ?? 0)) : 0;
+
+      if (realQty > 0) {
+        const entryPrice = Number(sidePos.entryPrice ?? avg);
+        const unrealizedProfit = Number(sidePos.unrealizedProfit ?? 0);
+        const initialMargin = (entryPrice * realQty) / cfg.leverage;
+        const pnlPct = initialMargin > 0 ? (unrealizedProfit / initialMargin) * 100 : 0;
+
+        if (pnlPct >= cfg.target_profit_pct) {
+          // FECHA A MERCADO
+          const isLong = side === 'LONG';
+          try {
+            await client.placeOrder({
+              symbol: cfg.symbol,
+              side: isLong ? 'SELL' : 'BUY',
+              positionSide: side,
+              type: 'MARKET',
+              quantity: realQty,
+            });
+          } catch (err: any) {
+            await botLog({
+              level: 'warn',
+              scope: 'engine',
+              user_id: cfg.user_id,
+              cycle_id: cycle.id,
+              message: `Falha ao fechar ciclo no TP: ${err.message ?? err}`,
+            });
+            return;
           }
-          await refreshAndPlaceTakeProfit(cfg, cycle.id, side, client, filters, avg, totalQty);
-        } catch (err: any) {
+
+          // Cancela ordens pendentes do par
+          await client.cancelAllOpen(cfg.symbol).catch(() => undefined);
+
+          await updateCycle(cycle.id, {
+            status: 'closed',
+            closed_at: new Date().toISOString(),
+            realized_pnl_usdt: unrealizedProfit,
+          });
+
+          await chargeForCycleProfit(cfg, cycle.id, unrealizedProfit);
+
           await botLog({
-            level: 'warn',
+            level: 'info',
             scope: 'engine',
             user_id: cfg.user_id,
             cycle_id: cycle.id,
-            message: `Falha ao reposicionar TP: ${err.message}`,
+            message: `🎯 Ciclo ${side} fechado no TP. PnL +${pnlPct.toFixed(3)}% ≈ ${unrealizedProfit.toFixed(4)} USDT. Próximo tick reabre.`,
+            data: { pnlPct, unrealizedProfit, target: cfg.target_profit_pct },
           });
+          return;
         }
       }
     }
   }
 
-  // 4) Fecha o ciclo se o TP foi filled
+  // (Compat) Se ainda existir ordem TAKE_PROFIT antiga no DB e tiver
+  // sido preenchida (ciclos abertos antes dessa simplificação), trata.
   const filledTp = refreshed.find((o) => o.role === 'TAKE_PROFIT' && o.status === 'FILLED');
   if (filledTp) {
     const closePrice = Number(filledTp.avg_fill_price ?? 0);
@@ -559,31 +591,6 @@ async function triggerSafetyOrders(
       break;
     }
   }
-}
-
-async function refreshAndPlaceTakeProfit(
-  cfg: StrategyConfig,
-  cycle_id: string,
-  side: CycleSide,
-  client: BinanceFuturesClient,
-  filters: SymbolFilters,
-  avgPrice: number,
-  qty: number,
-) {
-  const tpPrice = takeProfitPrice(cfg, avgPrice, side);
-  await placeAndRecordOrder({
-    user_id: cfg.user_id,
-    cycle_id,
-    client,
-    filters,
-    symbol: cfg.symbol,
-    side,
-    role: 'TAKE_PROFIT',
-    type: 'TAKE_PROFIT_MARKET',
-    qty,
-    stopPrice: tpPrice,
-    closePosition: true,
-  });
 }
 
 async function persistSnapshot(user_id: string, client: BinanceFuturesClient) {
