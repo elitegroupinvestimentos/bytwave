@@ -5,8 +5,8 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Paleta "Aurora": preto + brand-gray + branco. Accent verde
-        // mantido pra estados positivos (PnL); vermelho via Tailwind red-*.
+        // Paleta: preto + brand-gray + roxo (cor do hero) + branco.
+        // Accent verde mantido pra PnL positivo; vermelho via red-*.
         background: '#000000',
         foreground: '#FFFFFF',
         muted: {
@@ -16,8 +16,8 @@ export default {
         border: 'rgba(255,255,255,0.10)',
         card: '#0A0A0A',
         primary: {
-          DEFAULT: '#FFFFFF',
-          foreground: '#000000',
+          DEFAULT: '#A855F7', // purple-500
+          foreground: '#FFFFFF',
         },
         accent: {
           DEFAULT: 'hsl(160 84% 45%)',
@@ -28,6 +28,15 @@ export default {
           foreground: '#FFFFFF',
         },
         'brand-gray': '#1A1A1A',
+        'brand-purple': {
+          DEFAULT: '#A855F7',
+          50: '#FAF5FF',
+          100: '#F3E8FF',
+          400: '#C084FC',
+          500: '#A855F7',
+          600: '#9333EA',
+          700: '#7E22CE',
+        },
       },
       fontFamily: {
         display: ['Inter', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
