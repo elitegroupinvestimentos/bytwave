@@ -5,32 +5,34 @@ export default {
   theme: {
     extend: {
       colors: {
-        background: 'hsl(220 33% 4%)',
-        foreground: 'hsl(0 0% 98%)',
+        // Paleta "Aurora": preto + brand-gray + branco. Accent verde
+        // mantido pra estados positivos (PnL); vermelho via Tailwind red-*.
+        background: '#000000',
+        foreground: '#FFFFFF',
         muted: {
-          DEFAULT: 'hsl(220 12% 14%)',
-          foreground: 'hsl(220 8% 65%)',
+          DEFAULT: '#1A1A1A',
+          foreground: 'rgba(255,255,255,0.55)',
         },
-        border: 'hsl(220 12% 18%)',
-        card: 'hsl(220 20% 7%)',
+        border: 'rgba(255,255,255,0.10)',
+        card: '#0A0A0A',
         primary: {
-          DEFAULT: 'hsl(185 80% 50%)',
-          foreground: 'hsl(220 33% 4%)',
+          DEFAULT: '#FFFFFF',
+          foreground: '#000000',
         },
         accent: {
-          DEFAULT: 'hsl(165 80% 45%)',
-          foreground: 'hsl(220 33% 4%)',
+          DEFAULT: 'hsl(160 84% 45%)',
+          foreground: '#000000',
         },
         secondary: {
-          DEFAULT: 'hsl(220 15% 10%)',
-          foreground: 'hsl(0 0% 90%)',
+          DEFAULT: '#1A1A1A',
+          foreground: '#FFFFFF',
         },
         'brand-gray': '#1A1A1A',
       },
       fontFamily: {
-        display: ['"IBM Plex Sans"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
-        body: ['"IBM Plex Sans"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
-        mono: ['"IBM Plex Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+        display: ['Inter', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
+        body: ['Inter', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
+        mono: ['"JetBrains Mono"', '"IBM Plex Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
       animation: {
         'glow-pulse': 'glow-pulse 4s ease-in-out infinite',
