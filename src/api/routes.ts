@@ -873,12 +873,16 @@ router.post(
     if (body.payment_method === 'pix') {
       const { generatePix } = await import('../services/zyropay/client');
       const { createPaymentIntent } = await import('../services/supabase/paymentIntents');
+      const { getUsdBrlRate, convertUsdToBrl } = await import('../services/forex');
 
-      // Cria o intent PRIMEIRO pra termos o id local que vira o externalId
+      // Conversão USD → BRL (ZyroPay cobra em BRL).
+      const usdBrl = await getUsdBrlRate();
+      const brl = convertUsdToBrl(usd, usdBrl);
+
       const localId = crypto.randomUUID();
       try {
         const pix = await generatePix({
-          value: usd,
+          value: brl, // ZyroPay recebe valor em BRL
           expirationSeconds: 0,
           externalId: localId,
         });
@@ -896,8 +900,8 @@ router.post(
           level: 'info',
           scope: 'tokens',
           user_id: body.user_id,
-          message: `PIX gerado (zyropay): +${body.credits} créditos aguardando confirmação. paymentId=${pix.paymentId}`,
-          data: { credits: body.credits, usd, payment_id: pix.paymentId },
+          message: `PIX gerado: +${body.credits} créditos = $${usd} = R$${brl.toFixed(2)} (rate ${usdBrl.toFixed(4)}). paymentId=${pix.paymentId}`,
+          data: { credits: body.credits, usd, brl, rate: usdBrl, payment_id: pix.paymentId },
         });
         return res.json({
           pix_pending: true,
@@ -906,6 +910,8 @@ router.post(
           payment_id: pix.paymentId,
           credits: body.credits,
           usd,
+          brl,
+          rate: usdBrl,
         });
       } catch (err: any) {
         await botLog({
@@ -945,6 +951,16 @@ router.post(
       credits: body.credits,
       usd,
     });
+  }),
+);
+
+// Cotação atual USD→BRL (público, sem auth — só lê de uma API gratuita)
+router.get(
+  '/forex/usd-brl',
+  ah(async (_req, res) => {
+    const { getUsdBrlRate } = await import('../services/forex');
+    const rate = await getUsdBrlRate();
+    res.json({ rate });
   }),
 );
 

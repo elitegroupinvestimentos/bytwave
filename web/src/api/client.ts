@@ -222,8 +222,11 @@ export const api = {
           payment_id: string;
           credits: number;
           usd: number;
+          brl: number;
+          rate: number;
         }
     >('/tokens/topup', { method: 'POST', body: JSON.stringify(input) }),
+  forexUsdBrl: () => http<{ rate: number }>('/forex/usd-brl'),
   paymentIntentStatus: (intentId: string) =>
     http<{
       status: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'EXPIRED';

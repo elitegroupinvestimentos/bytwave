@@ -84,7 +84,18 @@ export default function Finance() {
     payment_id: string;
     credits: number;
     usd: number;
+    brl: number;
   } | null>(null);
+
+  // Cotação USD→BRL pra mostrar preview de quanto vai pagar em real
+  const [usdBrl, setUsdBrl] = useState<number | null>(null);
+  useEffect(() => {
+    let alive = true;
+    api
+      .forexUsdBrl()
+      .then((r) => alive && setUsdBrl(r.rate))
+      .catch(() => undefined);
+  }, []);
 
   async function buy() {
     if (!valid || purchasing) return;
@@ -99,6 +110,7 @@ export default function Finance() {
           payment_id: r.payment_id,
           credits: r.credits,
           usd: r.usd,
+          brl: r.brl,
         });
       } else {
         setFeedback({
@@ -249,6 +261,12 @@ export default function Finance() {
             <div className="font-mono font-bold text-3xl text-primary">
               ${credits.toLocaleString('en-US')}
             </div>
+            {method === 'pix' && usdBrl != null && credits > 0 && (
+              <div className="text-[11px] font-mono text-muted-foreground mt-1">
+                ≈ R$ {(credits * usdBrl).toFixed(2).replace('.', ',')}
+                <span className="opacity-60"> (1 USD = R$ {usdBrl.toFixed(2).replace('.', ',')})</span>
+              </div>
+            )}
           </div>
           <div className="text-right">
             <div className="text-[10px] font-display font-semibold tracking-[0.2em] uppercase text-muted-foreground">
@@ -376,6 +394,7 @@ export default function Finance() {
           code={pix.pix_code}
           credits={pix.credits}
           usd={pix.usd}
+          brl={pix.brl}
           paymentId={pix.payment_id}
           onClose={() => setPix(null)}
         />
@@ -388,12 +407,14 @@ function PixModal({
   code,
   credits,
   usd,
+  brl,
   paymentId,
   onClose,
 }: {
   code: string;
   credits: number;
   usd: number;
+  brl: number;
   paymentId: string;
   onClose: () => void;
 }) {
@@ -441,7 +462,10 @@ function PixModal({
               Valor
             </div>
             <div className="font-mono font-semibold text-foreground">
-              R$ {usd.toFixed(2).replace('.', ',')}
+              R$ {brl.toFixed(2).replace('.', ',')}
+            </div>
+            <div className="text-[10px] font-mono text-muted-foreground/70">
+              ≈ ${usd.toFixed(2)}
             </div>
           </div>
           <div className="text-sm text-right">
