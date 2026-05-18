@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import crypto from 'crypto';
 import { z } from 'zod';
 import {
   createUserSchema,
@@ -867,6 +868,60 @@ router.post(
   ah(async (req, res) => {
     const body = topupSchema.parse(req.body);
     const usd = body.credits; // 1:1
+
+    // ─── PIX via ZyroPay ─────────────────────────────────────
+    if (body.payment_method === 'pix') {
+      const { generatePix } = await import('../services/zyropay/client');
+      const { createPaymentIntent } = await import('../services/supabase/paymentIntents');
+
+      // Cria o intent PRIMEIRO pra termos o id local que vira o externalId
+      const localId = crypto.randomUUID();
+      try {
+        const pix = await generatePix({
+          value: usd,
+          expirationSeconds: 0,
+          externalId: localId,
+        });
+        const intent = await createPaymentIntent({
+          user_id: body.user_id,
+          provider: 'zyropay',
+          payment_id: pix.paymentId,
+          mov_id: pix.movId,
+          external_id: localId,
+          pix_code: pix.pix,
+          credits: body.credits,
+          usd_amount: usd,
+        });
+        await botLog({
+          level: 'info',
+          scope: 'tokens',
+          user_id: body.user_id,
+          message: `PIX gerado (zyropay): +${body.credits} créditos aguardando confirmação. paymentId=${pix.paymentId}`,
+          data: { credits: body.credits, usd, payment_id: pix.paymentId },
+        });
+        return res.json({
+          pix_pending: true,
+          intent_id: intent.id,
+          pix_code: pix.pix,
+          payment_id: pix.paymentId,
+          credits: body.credits,
+          usd,
+        });
+      } catch (err: any) {
+        await botLog({
+          level: 'error',
+          scope: 'tokens',
+          user_id: body.user_id,
+          message: `Falha ao gerar PIX ZyroPay: ${err?.message ?? err}`,
+        });
+        return res.status(500).json({
+          error: 'pix_generation_failed',
+          message: err?.message ?? 'Falha ao gerar PIX.',
+        });
+      }
+    }
+
+    // ─── Demais métodos: crédito direto (placeholder de teste) ─
     const result = await grantTokens({
       user_id: body.user_id,
       amount: body.credits,
@@ -881,7 +936,7 @@ router.post(
       level: 'info',
       scope: 'tokens',
       user_id: body.user_id,
-      message: `Topup: +${body.credits} créditos ($${usd} via ${body.payment_method}). Saldo: ${result.balance_after}`,
+      message: `Topup direto: +${body.credits} créditos ($${usd} via ${body.payment_method}). Saldo: ${result.balance_after}`,
       data: { credits: body.credits, usd, payment_method: body.payment_method },
     });
     res.json({
@@ -890,6 +945,99 @@ router.post(
       credits: body.credits,
       usd,
     });
+  }),
+);
+
+// Status de um intent (frontend faz polling pra detectar confirmação)
+router.get(
+  '/payments/intent/:id',
+  requireAuth,
+  ah(async (req, res) => {
+    const { getPaymentIntent } = await import('../services/supabase/paymentIntents');
+    const intent = await getPaymentIntent(req.params.id);
+    if (!intent) return res.status(404).json({ error: 'not_found' });
+    // Só dá pra ver o próprio intent.
+    if (intent.user_id !== (req as any).auth?.userId) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+    res.json({
+      status: intent.status,
+      credits: intent.credits,
+      usd_amount: intent.usd_amount,
+      confirmed_at: intent.confirmed_at,
+    });
+  }),
+);
+
+// Webhook ZyroPay — recebe confirmação PIX-IN.
+// Rotina:
+//  1) Localiza intent pelo paymentId
+//  2) Se status do callback == CONFIRMED e intent ainda PENDING:
+//     - marca CONFIRMED (transição atômica)
+//     - credita os créditos pro user via grantTokens
+//  3) Idempotente: callbacks repetidos não creditam duas vezes.
+router.post(
+  '/webhooks/zyropay',
+  ah(async (req, res) => {
+    const body = req.body ?? {};
+    const paymentId: string = body.paymentId ?? body.payment_id ?? '';
+    const status: string = body.status ?? '';
+    const type: string = body.type ?? '';
+
+    await botLog({
+      level: 'info',
+      scope: 'webhook',
+      message: `ZyroPay webhook recebido (type=${type}, status=${status}, paymentId=${paymentId})`,
+      data: body,
+    });
+
+    if (!paymentId) {
+      return res.status(200).json({ ok: true, ignored: 'no payment_id' });
+    }
+
+    const {
+      getPaymentIntentByPaymentId,
+      markPaymentConfirmed,
+    } = await import('../services/supabase/paymentIntents');
+
+    const intent = await getPaymentIntentByPaymentId(paymentId);
+    if (!intent) {
+      return res.status(200).json({ ok: true, ignored: 'intent not found' });
+    }
+
+    // Só CONFIRMED dispara o crédito. PIX_MED / PIX_MED_DELETE são informativos.
+    if (status !== 'CONFIRMED') {
+      return res.status(200).json({ ok: true, ignored: `status=${status}` });
+    }
+
+    const transitioned = await markPaymentConfirmed(paymentId, body);
+    if (!transitioned) {
+      // Já tinha sido confirmado antes — ignora pra ser idempotente.
+      return res.status(200).json({ ok: true, idempotent: true });
+    }
+
+    const result = await grantTokens({
+      user_id: intent.user_id,
+      amount: intent.credits,
+      reason: 'pack_purchase',
+      metadata: {
+        kind: 'topup_pix',
+        usd_amount: intent.usd_amount,
+        payment_method: 'pix',
+        payment_id: paymentId,
+        provider: 'zyropay',
+      },
+    });
+
+    await botLog({
+      level: 'info',
+      scope: 'tokens',
+      user_id: intent.user_id,
+      message: `PIX confirmado: +${intent.credits} créditos creditados (paymentId=${paymentId}). Saldo: ${result.balance_after}`,
+      data: { credits: intent.credits, payment_id: paymentId },
+    });
+
+    res.json({ ok: true, credited: intent.credits });
   }),
 );
 

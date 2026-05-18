@@ -213,10 +213,24 @@ export const api = {
     credits: number;
     payment_method?: 'stripe' | 'binance_pay' | 'pix' | 'card' | 'placeholder';
   }) =>
-    http<{ success: boolean; balance_after: number; credits: number; usd: number }>(
-      '/tokens/topup',
-      { method: 'POST', body: JSON.stringify(input) },
-    ),
+    http<
+      | { success: boolean; balance_after: number; credits: number; usd: number }
+      | {
+          pix_pending: true;
+          intent_id: string;
+          pix_code: string;
+          payment_id: string;
+          credits: number;
+          usd: number;
+        }
+    >('/tokens/topup', { method: 'POST', body: JSON.stringify(input) }),
+  paymentIntentStatus: (intentId: string) =>
+    http<{
+      status: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'EXPIRED';
+      credits: number;
+      usd_amount: number;
+      confirmed_at: string | null;
+    }>(`/payments/intent/${intentId}`),
 
   // ── drawdown protection ────────────────────────────────────────────────
   drawdownGet: (userId: string) =>

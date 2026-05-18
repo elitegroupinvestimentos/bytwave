@@ -78,18 +78,36 @@ export default function Finance() {
 
   const valid = credits >= MIN_CREDITS && credits <= MAX_CREDITS;
 
+  const [pix, setPix] = useState<{
+    intent_id: string;
+    pix_code: string;
+    payment_id: string;
+    credits: number;
+    usd: number;
+  } | null>(null);
+
   async function buy() {
     if (!valid || purchasing) return;
     setPurchasing(true);
     setFeedback(null);
     try {
-      const r = await api.tokensTopup({ user_id: userId, credits, payment_method: method });
-      setFeedback({
-        type: 'success',
-        msg: `+${r.credits} créditos adicionados ($${r.usd}). Saldo: ${r.balance_after}.`,
-      });
-      tokens.refetch();
-      api.tokensHistory(userId, 200).then(setHistory).catch(() => undefined);
+      const r: any = await api.tokensTopup({ user_id: userId, credits, payment_method: method });
+      if (r.pix_pending) {
+        setPix({
+          intent_id: r.intent_id,
+          pix_code: r.pix_code,
+          payment_id: r.payment_id,
+          credits: r.credits,
+          usd: r.usd,
+        });
+      } else {
+        setFeedback({
+          type: 'success',
+          msg: `+${r.credits} créditos adicionados ($${r.usd}). Saldo: ${r.balance_after}.`,
+        });
+        tokens.refetch();
+        api.tokensHistory(userId, 200).then(setHistory).catch(() => undefined);
+      }
     } catch (err: any) {
       const msg = err instanceof ApiError ? err.body?.message ?? err.message : err?.message;
       setFeedback({ type: 'error', msg: msg ?? 'Falha na recarga.' });
@@ -97,6 +115,35 @@ export default function Finance() {
       setPurchasing(false);
     }
   }
+
+  // Polling do intent enquanto modal PIX aberto
+  useEffect(() => {
+    if (!pix) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const r = await api.paymentIntentStatus(pix.intent_id);
+        if (cancelled) return;
+        if (r.status === 'CONFIRMED') {
+          setPix(null);
+          setFeedback({
+            type: 'success',
+            msg: `Pagamento confirmado! +${r.credits} créditos creditados.`,
+          });
+          tokens.refetch();
+          api.tokensHistory(userId, 200).then(setHistory).catch(() => undefined);
+        }
+      } catch {
+        // ignora
+      }
+    };
+    tick();
+    const id = setInterval(tick, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [pix, userId, tokens]);
 
   return (
     <DashboardLayout title="Créditos">
@@ -322,7 +369,116 @@ export default function Finance() {
           )}
         </div>
       </section>
+
+      {/* PIX modal */}
+      {pix && (
+        <PixModal
+          code={pix.pix_code}
+          credits={pix.credits}
+          usd={pix.usd}
+          paymentId={pix.payment_id}
+          onClose={() => setPix(null)}
+        />
+      )}
     </DashboardLayout>
+  );
+}
+
+function PixModal({
+  code,
+  credits,
+  usd,
+  paymentId,
+  onClose,
+}: {
+  code: string;
+  credits: number;
+  usd: number;
+  paymentId: string;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // ignore
+    }
+  }
+
+  // QR via API pública (sem dep). data = código BR.
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=1&data=${encodeURIComponent(code)}`;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="w-full sm:max-w-md max-h-[95vh] overflow-y-auto rounded-t-3xl sm:rounded-2xl border border-border bg-card p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Pague com PIX</h2>
+            <p className="text-xs text-muted-foreground">
+              Escaneie o QR ou copie o código abaixo.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-muted-foreground hover:text-foreground p-1.5 rounded-md hover:bg-secondary/40"
+            aria-label="Fechar"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="flex justify-center bg-white p-3 rounded-xl">
+          <img src={qrUrl} alt="QR Code PIX" className="w-[280px] h-[280px]" />
+        </div>
+
+        <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 flex items-center justify-between">
+          <div className="text-sm">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Valor
+            </div>
+            <div className="font-mono font-semibold text-foreground">
+              R$ {usd.toFixed(2).replace('.', ',')}
+            </div>
+          </div>
+          <div className="text-sm text-right">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Recebe
+            </div>
+            <div className="font-mono font-semibold text-primary">+{credits} créditos</div>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="block text-[10px] font-display font-semibold tracking-[0.2em] uppercase text-muted-foreground">
+            Copia e cola
+          </label>
+          <div className="relative">
+            <textarea
+              readOnly
+              value={code}
+              className="w-full bg-secondary/30 border border-border rounded-xl px-3 py-2.5 text-[11px] font-mono outline-none break-all resize-none h-24"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={copy}
+            className="w-full h-11 rounded-full bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-all"
+          >
+            {copied ? 'Copiado!' : 'Copiar código PIX'}
+          </button>
+        </div>
+
+        <div className="text-[11px] text-muted-foreground text-center leading-relaxed">
+          Após o pagamento, o saldo é creditado automaticamente em poucos segundos.
+          <br />
+          <span className="font-mono text-[10px] opacity-60">paymentId: {paymentId}</span>
+        </div>
+      </div>
+    </div>
   );
 }
 
