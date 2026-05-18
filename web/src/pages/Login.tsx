@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import {
   Circle,
   Chrome,
-  Github,
+  Facebook,
   Eye,
   EyeOff,
   Loader2,
@@ -144,7 +144,7 @@ export default function Login() {
           {/* Social buttons */}
           <div className="grid grid-cols-2 gap-4">
             <SocialButton icon={<Chrome className="w-4 h-4" />} label="Google" />
-            <SocialButton icon={<Github className="w-4 h-4" />} label="Github" />
+            <SocialButton icon={<Facebook className="w-4 h-4" />} label="Facebook" />
           </div>
 
           {/* Divider */}
