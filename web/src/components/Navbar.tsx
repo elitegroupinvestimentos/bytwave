@@ -18,7 +18,7 @@ export function Navbar() {
     >
       {/* Mobile: logo esquerda */}
       <div className="flex-shrink-0 md:hidden">
-        <BrandText className="text-xl drop-shadow-[0_0_18px_rgba(26,213,230,0.45)]" />
+        <BrandText className="text-xl drop-shadow-[0_0_18px_rgba(168,85,247,0.45)]" />
       </div>
 
       {/* Desktop: spacer fantasma à esquerda (mantém o logo central) */}
@@ -26,7 +26,7 @@ export function Navbar() {
 
       {/* Desktop: logo no CENTRO */}
       <div className="hidden md:flex flex-1 justify-center">
-        <BrandText className="text-3xl drop-shadow-[0_0_24px_rgba(26,213,230,0.5)]" />
+        <BrandText className="text-3xl drop-shadow-[0_0_24px_rgba(168,85,247,0.5)]" />
       </div>
 
       {/* Botões à direita */}

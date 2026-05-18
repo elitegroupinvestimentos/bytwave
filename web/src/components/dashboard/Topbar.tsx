@@ -93,7 +93,7 @@ export function Topbar({
             onClick={() => setMenuOpen((v) => !v)}
             className="flex items-center gap-2 pl-1 pr-2 md:pr-3 h-10 rounded-full border border-border hover:border-primary/40 transition-colors"
           >
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-[11px] font-bold text-primary-foreground">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-purple-400 to-brand-purple-700 flex items-center justify-center text-[11px] font-bold text-primary-foreground">
               {userInitials}
             </div>
             <span className="hidden sm:inline text-sm font-medium max-w-[100px] md:max-w-[140px] truncate">

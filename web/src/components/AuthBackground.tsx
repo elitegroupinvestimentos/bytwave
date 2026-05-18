@@ -17,9 +17,9 @@ export function AuthBackground() {
       >
         <defs>
           <linearGradient id="aWave1" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#1AD5E6" stopOpacity="0" />
-            <stop offset="50%" stopColor="#1AD5E6" stopOpacity="0.7" />
-            <stop offset="100%" stopColor="#1AD5E6" stopOpacity="0" />
+            <stop offset="0%" stopColor="#A855F7" stopOpacity="0" />
+            <stop offset="50%" stopColor="#A855F7" stopOpacity="0.7" />
+            <stop offset="100%" stopColor="#A855F7" stopOpacity="0" />
           </linearGradient>
           <linearGradient id="aWave2" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0%" stopColor="#17CFA1" stopOpacity="0" />
@@ -60,7 +60,7 @@ export function AuthBackground() {
             y={b.y}
             fontFamily="ui-monospace, Menlo, monospace"
             fontSize={b.size}
-            fill="#1AD5E6"
+            fill="#A855F7"
             opacity={b.op}
           >
             {b.t}

@@ -77,7 +77,7 @@ export function FeatureCards() {
                 style={{
                   background:
                     f.color === 'primary'
-                      ? 'radial-gradient(circle, rgba(26,213,230,0.3), transparent)'
+                      ? 'radial-gradient(circle, rgba(168,85,247,0.3), transparent)'
                       : 'radial-gradient(circle, rgba(23,207,161,0.3), transparent)',
                 }}
               />

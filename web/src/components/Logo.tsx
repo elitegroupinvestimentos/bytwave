@@ -6,7 +6,7 @@ export function LogoMark({ className = 'w-8 h-8' }: { className?: string }) {
     <svg viewBox="0 0 64 64" className={className} aria-hidden>
       <defs>
         <linearGradient id="lg-grad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#1AD5E6" />
+          <stop offset="0%" stopColor="#A855F7" />
           <stop offset="100%" stopColor="#17CFA1" />
         </linearGradient>
       </defs>
@@ -18,7 +18,7 @@ export function LogoMark({ className = 'w-8 h-8' }: { className?: string }) {
         fill="none"
         strokeLinecap="round"
       />
-      <circle cx="32" cy="32" r="3" fill="#1AD5E6" />
+      <circle cx="32" cy="32" r="3" fill="#A855F7" />
     </svg>
   );
 }
@@ -26,7 +26,7 @@ export function LogoMark({ className = 'w-8 h-8' }: { className?: string }) {
 export function LogoWordmark({ className = '' }: { className?: string }) {
   return (
     <div className={`flex items-center gap-2.5 ${className}`}>
-      <LogoMark className="w-9 h-9 drop-shadow-[0_0_18px_rgba(26,213,230,0.45)]" />
+      <LogoMark className="w-9 h-9 drop-shadow-[0_0_18px_rgba(168,85,247,0.45)]" />
       <span className="font-display font-bold tracking-tight text-2xl text-foreground">
         Byt<span className="gradient-text-primary">wave</span>
       </span>

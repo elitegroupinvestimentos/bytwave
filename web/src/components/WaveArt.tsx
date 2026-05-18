@@ -10,13 +10,13 @@ export function WaveArt({ className = '' }: { className?: string }) {
       className={className}
       animate={{ y: [0, -16, 0], rotateZ: [-1, 1, -1] }}
       transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
-      style={{ filter: 'drop-shadow(0 0 60px rgba(26, 213, 230, 0.35))' }}
+      style={{ filter: 'drop-shadow(0 0 60px rgba(168, 85, 247, 0.35))' }}
     >
       <svg viewBox="0 0 420 420" className="w-full h-full">
         <defs>
           <linearGradient id="bodyGrad" x1="0" y1="0" x2="1" y2="1">
             <stop offset="0%" stopColor="#0EA5C7" />
-            <stop offset="50%" stopColor="#1AD5E6" />
+            <stop offset="50%" stopColor="#A855F7" />
             <stop offset="100%" stopColor="#0B7A91" />
           </linearGradient>
           <linearGradient id="bellyGrad" x1="0" y1="0" x2="0" y2="1">
@@ -25,12 +25,12 @@ export function WaveArt({ className = '' }: { className?: string }) {
           </linearGradient>
           <radialGradient id="eyeGlow" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor="#FFFFFF" />
-            <stop offset="60%" stopColor="#1AD5E6" />
+            <stop offset="60%" stopColor="#A855F7" />
             <stop offset="100%" stopColor="#0a1118" />
           </radialGradient>
           <linearGradient id="accentGrad" x1="0" y1="0" x2="1" y2="1">
             <stop offset="0%" stopColor="#17CFA1" />
-            <stop offset="100%" stopColor="#1AD5E6" />
+            <stop offset="100%" stopColor="#A855F7" />
           </linearGradient>
         </defs>
 
@@ -61,13 +61,13 @@ export function WaveArt({ className = '' }: { className?: string }) {
           <path d="M 130 180 L 170 180 L 175 175 L 200 175" />
           <path d="M 130 200 L 160 200 L 165 195" />
           <circle cx="135" cy="180" r="2.5" fill="#17CFA1" />
-          <circle cx="135" cy="200" r="2.5" fill="#1AD5E6" />
+          <circle cx="135" cy="200" r="2.5" fill="#A855F7" />
           <circle cx="200" cy="175" r="3" fill="#17CFA1" />
         </g>
 
         {/* Painel digital no peito */}
-        <rect x="245" y="195" width="80" height="50" rx="8" fill="#0a1118" stroke="#1AD5E6" strokeWidth="1.5" opacity="0.9" />
-        <g fill="#1AD5E6">
+        <rect x="245" y="195" width="80" height="50" rx="8" fill="#0a1118" stroke="#A855F7" strokeWidth="1.5" opacity="0.9" />
+        <g fill="#A855F7">
           <rect x="252" y="205" width="6" height="14" rx="1" />
           <rect x="263" y="210" width="6" height="9" rx="1" opacity="0.7" />
           <rect x="274" y="200" width="6" height="19" rx="1" />
@@ -88,7 +88,7 @@ export function WaveArt({ className = '' }: { className?: string }) {
           cy="170"
           r="24"
           fill="none"
-          stroke="#1AD5E6"
+          stroke="#A855F7"
           strokeWidth="1.5"
           opacity="0.6"
           animate={{ r: [22, 30, 22], opacity: [0.6, 0, 0.6] }}
@@ -117,7 +117,7 @@ export function WaveArt({ className = '' }: { className?: string }) {
             cx="180"
             cy="80"
             r="6"
-            fill="#1AD5E6"
+            fill="#A855F7"
             animate={{ y: [-5, -25, -5], opacity: [0.8, 0, 0.8] }}
             transition={{ duration: 3, repeat: Infinity }}
           />
@@ -133,7 +133,7 @@ export function WaveArt({ className = '' }: { className?: string }) {
             cx="170"
             cy="55"
             r="3"
-            fill="#1AD5E6"
+            fill="#A855F7"
             animate={{ y: [-2, -15, -2], opacity: [0.6, 0, 0.6] }}
             transition={{ duration: 3, repeat: Infinity, delay: 1 }}
           />

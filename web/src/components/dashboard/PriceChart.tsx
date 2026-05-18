@@ -119,8 +119,8 @@ function Chart({ data, interval }: { data: Kline[]; interval: Interval }) {
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full">
       <defs>
         <linearGradient id="chartArea" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#1AD5E6" stopOpacity="0.25" />
-          <stop offset="100%" stopColor="#1AD5E6" stopOpacity="0" />
+          <stop offset="0%" stopColor="#A855F7" stopOpacity="0.25" />
+          <stop offset="100%" stopColor="#A855F7" stopOpacity="0" />
         </linearGradient>
       </defs>
 
@@ -160,7 +160,7 @@ function Chart({ data, interval }: { data: Kline[]; interval: Interval }) {
       {/* Area fill */}
       <path d={area} fill="url(#chartArea)" />
       {/* Line */}
-      <path d={path} stroke="#1AD5E6" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={path} stroke="#A855F7" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
       {/* Last point */}
       {points.length > 0 && (
         <>
@@ -168,13 +168,13 @@ function Chart({ data, interval }: { data: Kline[]; interval: Interval }) {
             cx={points[points.length - 1].x}
             cy={points[points.length - 1].y}
             r="4"
-            fill="#1AD5E6"
+            fill="#A855F7"
           />
           <circle
             cx={points[points.length - 1].x}
             cy={points[points.length - 1].y}
             r="9"
-            fill="#1AD5E6"
+            fill="#A855F7"
             opacity="0.25"
           />
         </>

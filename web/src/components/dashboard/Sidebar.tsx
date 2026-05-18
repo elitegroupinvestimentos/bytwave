@@ -46,7 +46,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         {/* Topo */}
         <div className="h-16 flex items-center justify-between md:justify-center px-4 md:px-0 border-b border-border md:border-0">
           <div className="flex items-center gap-2 md:gap-0">
-            <LogoMark className="w-9 h-9 drop-shadow-[0_0_18px_rgba(26,213,230,0.45)]" />
+            <LogoMark className="w-9 h-9 drop-shadow-[0_0_18px_rgba(168,85,247,0.45)]" />
             <span className="md:hidden font-display font-bold text-lg tracking-tight">
               Byt<span className="gradient-text-primary">wave</span>
             </span>
@@ -80,7 +80,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 onClick={onClose}
                 className={`relative flex md:flex-col items-center gap-3 md:gap-1 px-3 md:px-2 py-3 rounded-xl text-sm md:text-[10px] tracking-wider md:uppercase font-display transition-all
                   ${active
-                    ? 'bg-primary/10 text-primary border border-primary/40 shadow-[0_0_24px_-6px_rgba(26,213,230,0.5)]'
+                    ? 'bg-primary/10 text-primary border border-primary/40 shadow-[0_0_24px_-6px_rgba(168,85,247,0.5)]'
                     : 'text-muted-foreground border border-transparent hover:bg-card/60 hover:text-foreground'
                   }`}
               >
