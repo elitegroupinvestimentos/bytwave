@@ -10,6 +10,11 @@ import {
   upsertOAuthProvider,
   deleteOAuthProvider,
 } from '../services/supabase/oauth';
+import {
+  listPaymentGateways,
+  upsertPaymentGateway,
+  deletePaymentGateway,
+} from '../services/supabase/paymentGateways';
 
 export const adminRouter = Router();
 
@@ -504,5 +509,58 @@ adminRouter.patch(
       data: valueToStore ?? {},
     });
     res.json({ ok: true, marketing_overrides: valueToStore });
+  }),
+);
+
+// ── Payment gateways (PIX etc.) ────────────────────────────────────────────
+// GET lista (secret mascarado).
+// PUT upsert.
+// DELETE remove.
+
+adminRouter.get(
+  '/payment-gateways',
+  ah(async (_req, res) => {
+    const items = await listPaymentGateways();
+    res.json(
+      items.map((i) => ({
+        ...i,
+        client_secret: i.client_secret ? `••••${i.client_secret.slice(-4)}` : '',
+        configured: Boolean(i.client_id && i.client_secret),
+      })),
+    );
+  }),
+);
+
+const pgSchema = z.object({
+  provider: z.enum(['zyropay']),
+  client_id: z.string().max(500),
+  client_secret: z.string().max(500),
+  webhook_url: z.string().max(500).default(''),
+  base_url: z.string().max(500).default(''),
+  enabled: z.boolean(),
+});
+
+adminRouter.put(
+  '/payment-gateways',
+  ah(async (req, res) => {
+    const body = pgSchema.parse(req.body);
+    await upsertPaymentGateway(body);
+    await botLog({
+      level: 'info',
+      scope: 'admin',
+      message: `Gateway ${body.provider} ${body.enabled ? 'ativado' : 'desativado'} (admin)`,
+      data: { provider: body.provider, enabled: body.enabled },
+    });
+    res.json({ ok: true });
+  }),
+);
+
+adminRouter.delete(
+  '/payment-gateways/:provider',
+  ah(async (req, res) => {
+    const p = z.enum(['zyropay']).parse(req.params.provider);
+    await deletePaymentGateway(p);
+    await botLog({ level: 'info', scope: 'admin', message: `Gateway ${p} removido (admin)` });
+    res.json({ ok: true });
   }),
 );

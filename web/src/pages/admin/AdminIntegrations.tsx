@@ -11,6 +11,7 @@ import {
   Facebook,
   Save,
   Trash2,
+  Banknote,
 } from 'lucide-react';
 import { AdminLayout } from '../../components/admin/AdminLayout';
 import { admin } from '../../api/admin';
@@ -108,7 +109,291 @@ export default function AdminIntegrations() {
           ))}
         </div>
       )}
+
+      {/* ─── Gateways de pagamento (PIX) ─── */}
+      <div className="rounded-2xl border border-border bg-card/40 p-4 flex items-start gap-3 mt-2">
+        <Banknote className="w-4 h-4 text-primary mt-0.5" />
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          <strong className="text-foreground">Gateway de pagamento (PIX-in)</strong>.
+          ZyroPay: depois de salvar as credenciais aqui, a tela <em>/finance</em>
+          gera QR Code PIX no checkout e o webhook desta URL credita os tokens
+          automaticamente quando o pagamento confirmar.
+        </p>
+      </div>
+
+      <PaymentGatewaySection />
     </AdminLayout>
+  );
+}
+
+function PaymentGatewaySection() {
+  const [data, setData] = useState<{
+    provider: 'zyropay';
+    client_id: string;
+    client_secret: string;
+    webhook_url: string;
+    base_url: string;
+    enabled: boolean;
+    configured: boolean;
+    updated_at: string | null;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  async function load() {
+    try {
+      const list = await (await import('../../api/admin')).admin.paymentGateways();
+      setData(
+        list.find((p) => p.provider === 'zyropay') ?? {
+          provider: 'zyropay',
+          client_id: '',
+          client_secret: '',
+          webhook_url: '',
+          base_url: '',
+          enabled: false,
+          configured: false,
+          updated_at: null,
+        },
+      );
+    } catch {
+      setData({
+        provider: 'zyropay',
+        client_id: '',
+        client_secret: '',
+        webhook_url: '',
+        base_url: '',
+        enabled: false,
+        configured: false,
+        updated_at: null,
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+  useEffect(() => {
+    load();
+  }, []);
+
+  if (loading || !data) return null;
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <ZyroPayCard row={data} onSaved={load} />
+    </div>
+  );
+}
+
+function ZyroPayCard({
+  row,
+  onSaved,
+}: {
+  row: {
+    provider: 'zyropay';
+    client_id: string;
+    client_secret: string;
+    webhook_url: string;
+    base_url: string;
+    enabled: boolean;
+    configured: boolean;
+  };
+  onSaved: () => void;
+}) {
+  const [enabled, setEnabled] = useState(row.enabled);
+  const [clientId, setClientId] = useState(row.client_id);
+  const [secret, setSecret] = useState('');
+  const [webhookUrl, setWebhookUrl] = useState(row.webhook_url);
+  const [baseUrl, setBaseUrl] = useState(row.base_url);
+  const [showSecret, setShowSecret] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const status = !row.configured
+    ? { color: 'text-muted-foreground', label: 'NÃO CONFIGURADO' }
+    : !row.enabled
+    ? { color: 'text-yellow-400', label: 'CONFIGURADO · DESATIVADO' }
+    : { color: 'text-accent', label: 'CONECTADO' };
+
+  async function save() {
+    setSaving(true);
+    setFeedback(null);
+    try {
+      if (!clientId.trim()) {
+        setFeedback({ ok: false, msg: 'Client ID é obrigatório.' });
+        setSaving(false);
+        return;
+      }
+      if (!row.configured && !secret.trim()) {
+        setFeedback({ ok: false, msg: 'Cole a senha (password) pra primeira configuração.' });
+        setSaving(false);
+        return;
+      }
+      const { admin } = await import('../../api/admin');
+      await admin.paymentGatewaySave({
+        provider: 'zyropay',
+        client_id: clientId.trim(),
+        client_secret: secret.trim() || row.client_secret,
+        webhook_url: webhookUrl.trim(),
+        base_url: baseUrl.trim(),
+        enabled,
+      });
+      setFeedback({ ok: true, msg: 'Gateway salvo.' });
+      setSecret('');
+      onSaved();
+    } catch (err: any) {
+      setFeedback({ ok: false, msg: err?.message ?? 'Erro ao salvar.' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove() {
+    if (!confirm('Remover credenciais ZyroPay?')) return;
+    setRemoving(true);
+    setFeedback(null);
+    try {
+      const { admin } = await import('../../api/admin');
+      await admin.paymentGatewayDelete('zyropay');
+      onSaved();
+      setFeedback({ ok: true, msg: 'Gateway removido.' });
+    } catch (err: any) {
+      setFeedback({ ok: false, msg: err?.message ?? 'Erro ao remover.' });
+    } finally {
+      setRemoving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-border bg-card/40 p-5 space-y-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-secondary/40 border border-border flex items-center justify-center">
+            <Banknote className="w-5 h-5 text-foreground" />
+          </div>
+          <div>
+            <div className="font-semibold text-base">ZyroPay (PIX)</div>
+            <span className="text-[11px] text-muted-foreground">
+              gateway-zyropay-api.rancher.codefabrik.dev — só PIX-in
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {row.configured ? (
+            <CheckCircle2 className={`w-4 h-4 ${status.color}`} />
+          ) : (
+            <XCircle className={`w-4 h-4 ${status.color}`} />
+          )}
+          <span
+            className={`text-[10px] font-display font-semibold tracking-[0.2em] uppercase ${status.color}`}
+          >
+            {status.label}
+          </span>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <label className="flex items-center justify-between gap-2 text-sm">
+          <span className="text-muted-foreground">Ativado</span>
+          <button
+            type="button"
+            onClick={() => setEnabled((v) => !v)}
+            aria-pressed={enabled}
+            className={`relative inline-flex shrink-0 items-center h-6 w-11 rounded-full transition-colors ${
+              enabled ? 'bg-accent' : 'bg-secondary/60'
+            }`}
+          >
+            <span
+              className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform ${
+                enabled ? 'translate-x-[22px]' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+        </label>
+
+        <Field label="Client ID">
+          <input
+            value={clientId}
+            onChange={(e) => setClientId(e.target.value)}
+            placeholder="copie do ZyroPay (suporte@zyropay.com)"
+            className="w-full bg-secondary/30 border border-border rounded-xl px-3 py-2.5 outline-none focus:border-primary/50 transition-colors text-sm font-mono"
+          />
+        </Field>
+
+        <Field
+          label={`Senha (password)${row.configured ? ` (atual: ${row.client_secret || '—'})` : ''}`}
+          hint={row.configured ? 'Em branco mantém a atual' : undefined}
+        >
+          <div className="relative">
+            <input
+              type={showSecret ? 'text' : 'password'}
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              autoComplete="off"
+              placeholder={row.configured ? '••••••••' : 'cole aqui'}
+              className="w-full bg-secondary/30 border border-border rounded-xl px-3 py-2.5 pr-10 outline-none focus:border-primary/50 transition-colors text-sm font-mono"
+            />
+            <button
+              type="button"
+              onClick={() => setShowSecret((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary"
+              aria-label="mostrar/ocultar"
+            >
+              {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+        </Field>
+
+        <Field label="Webhook URL (recebe confirmação PIX)">
+          <input
+            value={webhookUrl}
+            onChange={(e) => setWebhookUrl(e.target.value)}
+            placeholder="https://api.seusite.com/api/webhooks/zyropay"
+            className="w-full bg-secondary/30 border border-border rounded-xl px-3 py-2.5 outline-none focus:border-primary/50 transition-colors text-sm font-mono"
+          />
+        </Field>
+
+        <Field label="Base URL (opcional — override sandbox/prod)">
+          <input
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
+            placeholder="https://gateway-zyropay-api.rancher.codefabrik.dev"
+            className="w-full bg-secondary/30 border border-border rounded-xl px-3 py-2.5 outline-none focus:border-primary/50 transition-colors text-sm font-mono"
+          />
+        </Field>
+      </div>
+
+      {feedback && (
+        <div
+          className={`rounded-lg border px-3 py-2 text-sm flex items-center gap-2 ${
+            feedback.ok
+              ? 'border-accent/40 bg-accent/10 text-accent'
+              : 'border-red-500/40 bg-red-500/10 text-red-300'
+          }`}
+        >
+          {feedback.ok ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+          {feedback.msg}
+        </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        <button
+          onClick={save}
+          disabled={saving}
+          className="flex-1 h-10 rounded-full bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          {saving ? 'Salvando...' : 'Salvar'}
+        </button>
+        {row.configured && (
+          <button
+            onClick={remove}
+            disabled={removing}
+            className="h-10 px-3 rounded-full border border-red-500/40 bg-red-500/10 text-red-300 text-sm hover:bg-red-500/15 transition-colors disabled:opacity-60 flex items-center gap-2"
+          >
+            {removing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+            Remover
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 

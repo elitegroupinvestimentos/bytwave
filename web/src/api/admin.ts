@@ -171,4 +171,37 @@ export const admin = {
     }),
   integrationDelete: (provider: 'google' | 'facebook') =>
     http<{ ok: true }>(`/integrations/${provider}`, { method: 'DELETE' }),
+
+  // ── Payment gateways (PIX etc.) ──────────────────────────────────
+  paymentGateways: () =>
+    http<
+      Array<{
+        provider: 'zyropay';
+        client_id: string;
+        client_secret: string;
+        webhook_url: string;
+        base_url: string;
+        enabled: boolean;
+        configured: boolean;
+        updated_at: string | null;
+      }>
+    >('/payment-gateways'),
+  paymentGatewaySave: (body: {
+    provider: 'zyropay';
+    client_id: string;
+    client_secret: string;
+    webhook_url?: string;
+    base_url?: string;
+    enabled: boolean;
+  }) =>
+    http<{ ok: true }>('/payment-gateways', {
+      method: 'PUT',
+      body: JSON.stringify({
+        webhook_url: '',
+        base_url: '',
+        ...body,
+      }),
+    }),
+  paymentGatewayDelete: (provider: 'zyropay') =>
+    http<{ ok: true }>(`/payment-gateways/${provider}`, { method: 'DELETE' }),
 };
