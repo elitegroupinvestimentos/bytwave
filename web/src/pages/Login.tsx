@@ -212,7 +212,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading || !email || !password}
-              className="w-full h-14 bg-gradient-to-br from-[#C084FC] via-[#A855F7] to-[#6D28D9] text-white font-semibold rounded-xl shadow-[0_8px_30px_-8px_rgba(168,85,247,0.55)] hover:brightness-110 active:scale-[0.98] mt-4 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full h-14 bg-gradient-to-br from-white via-[#F3E8FF] to-[#A78BFA] text-black font-semibold rounded-xl shadow-[0_8px_30px_-8px_rgba(168,85,247,0.45)] hover:brightness-105 active:scale-[0.98] mt-4 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
               {loading ? 'Entrando...' : 'Entrar'}
