@@ -1,6 +1,7 @@
-import { ArrowRight, Menu, X } from 'lucide-react';
+import { ArrowRight, Menu, X, Globe, Check } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { LANGUAGES, useI18n, type Lang } from '../lib/i18n';
 
 const BG_VIDEO =
   'https://stream.mux.com/BuGGTsiXq1T00WUb8qfURrHkTCbhrkfFLSv4uAOZzdhw.m3u8';
@@ -161,6 +162,67 @@ function Navbar() {
   );
 }
 
+function LangPicker() {
+  const { lang, setLang } = useI18n();
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    if (open) document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [open]);
+
+  const current = LANGUAGES.find((l) => l.code === lang) ?? LANGUAGES[0];
+
+  return (
+    <div className="mt-6 relative z-30" ref={wrapRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 text-white/70 hover:text-white text-xs font-medium px-3 py-1.5 rounded-full border border-white/15 hover:border-white/30 bg-black/40 backdrop-blur-md transition-all"
+        style={{ fontFamily: 'Inter, sans-serif' }}
+      >
+        <Globe size={14} />
+        <span>{current.flag}</span>
+        <span className="uppercase tracking-wider">{current.code}</span>
+      </button>
+      {open && (
+        <div
+          className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl border border-white/15 bg-black/95 backdrop-blur-md shadow-2xl py-1 z-40"
+          style={{ fontFamily: 'Inter, sans-serif' }}
+        >
+          {LANGUAGES.map((l) => {
+            const active = l.code === lang;
+            return (
+              <button
+                key={l.code}
+                onClick={() => {
+                  setLang(l.code as Lang);
+                  setOpen(false);
+                }}
+                className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-white/5 transition-colors ${
+                  active ? 'text-white' : 'text-white/70'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <span className="text-base leading-none">{l.flag}</span>
+                  <span>{l.label}</span>
+                </span>
+                {active && <Check className="w-3.5 h-3.5 text-white" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Landing() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -242,6 +304,8 @@ export default function Landing() {
             className="group-hover:translate-x-0.5 transition-transform duration-200"
           />
         </Link>
+
+        <LangPicker />
       </div>
     </div>
   );
