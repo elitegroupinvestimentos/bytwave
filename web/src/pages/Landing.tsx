@@ -1,9 +1,9 @@
 import { ArrowRight, Menu, X } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 
 const BG_VIDEO =
-  'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260508_155101_f2540600-6fe9-433e-8e48-b3f4b72f0727.mp4';
+  'https://stream.mux.com/BuGGTsiXq1T00WUb8qfURrHkTCbhrkfFLSv4uAOZzdhw.m3u8';
 
 const NAV_ITEMS = ['Platform', 'How it works', 'AI Defense', 'Connections', 'Insights'];
 
@@ -162,14 +162,45 @@ function Navbar() {
 }
 
 export default function Landing() {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+
+    // Safari toca HLS nativo via src direto.
+    if (v.canPlayType('application/vnd.apple.mpegurl')) {
+      v.src = BG_VIDEO;
+      v.play().catch(() => undefined);
+      return;
+    }
+
+    // Chrome/Firefox/etc → hls.js (dynamic import pra não inchar o bundle)
+    let hls: any = null;
+    let cancelled = false;
+    import('hls.js').then(({ default: Hls }) => {
+      if (cancelled || !Hls.isSupported() || !videoRef.current) return;
+      hls = new Hls({ enableWorker: true });
+      hls.loadSource(BG_VIDEO);
+      hls.attachMedia(videoRef.current);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        videoRef.current?.play().catch(() => undefined);
+      });
+    });
+    return () => {
+      cancelled = true;
+      if (hls) hls.destroy();
+    };
+  }, []);
+
   return (
     <div
       className="relative w-full h-screen overflow-hidden bg-black"
       style={{ fontFamily: 'Inter, sans-serif' }}
     >
       <video
+        ref={videoRef}
         className="absolute inset-0 z-0 w-full h-full object-cover"
-        src={BG_VIDEO}
         autoPlay
         loop
         muted
