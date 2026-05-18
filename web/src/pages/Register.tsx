@@ -1,18 +1,29 @@
 import { motion } from 'framer-motion';
-import { UserPlus, AlertCircle, Loader2, Eye, EyeOff } from 'lucide-react';
-import { FormEvent, useState } from 'react';
+import {
+  Circle,
+  Chrome,
+  Github,
+  Eye,
+  EyeOff,
+  Loader2,
+  AlertCircle,
+  Check,
+} from 'lucide-react';
+import { FormEvent, ReactNode, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { AuthBackground } from '../components/AuthBackground';
-import { LogoMark } from '../components/Logo';
-import { WaveArt } from '../components/WaveArt';
 import { api, ApiError, setSession } from '../api/client';
+
+const HERO_VIDEO =
+  'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260506_081238_406ed0e3-5d83-436e-a512-0bbff7ec5b95.mp4';
+
+const FONT = 'Inter, ui-sans-serif, system-ui, sans-serif';
 
 export default function Register() {
   const navigate = useNavigate();
-  const [name, setName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirm, setConfirm] = useState('');
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,23 +31,15 @@ export default function Register() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!email.trim()) {
-      setError('Informe um e-mail válido.');
-      return;
-    }
-    if (password.length < 8) {
-      setError('A senha precisa ter pelo menos 8 caracteres.');
-      return;
-    }
-    if (password !== confirm) {
-      setError('As senhas não conferem.');
-      return;
-    }
+    if (!email.trim()) return setError('Informe um e-mail válido.');
+    if (password.length < 8)
+      return setError('A senha precisa ter pelo menos 8 caracteres.');
     setLoading(true);
     try {
+      const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
       const res = await api.authRegister({
         email: email.trim(),
-        name: name.trim() || undefined,
+        name: fullName || undefined,
         password,
       });
       setSession({
@@ -60,62 +63,144 @@ export default function Register() {
   }
 
   return (
-    <main className="min-h-screen relative bg-background flex items-center justify-center px-4 py-10 overflow-hidden">
-      <AuthBackground />
+    <main
+      className="flex min-h-screen w-full bg-black selection:bg-white/30 p-2 transition-all duration-500 lg:h-screen lg:overflow-hidden lg:p-4 text-white antialiased"
+      style={{ fontFamily: FONT }}
+    >
+      {/* ─── LEFT (Hero + video) ─── */}
+      <aside className="hidden lg:flex relative w-[52%] flex-col items-center justify-end pb-32 px-12 rounded-3xl overflow-hidden shadow-2xl h-full">
+        <video
+          className="absolute inset-0 w-full h-full object-cover"
+          autoPlay
+          muted
+          loop
+          playsInline
+        >
+          <source src={HERO_VIDEO} type="video/mp4" />
+        </video>
 
-      <motion.div
-        initial={{ opacity: 0, y: 20, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.5 }}
-        className="relative z-10 w-full max-w-md"
-      >
-        <div className="absolute -top-px left-12 right-12 h-[2px] bg-gradient-to-r from-transparent via-primary to-transparent" />
-        <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-32 h-1 bg-primary rounded-full blur-md opacity-80" />
+        <motion.div
+          initial="hidden"
+          animate="show"
+          variants={{
+            hidden: {},
+            show: { transition: { staggerChildren: 0.15, delayChildren: 0.2 } },
+          }}
+          className="relative z-10 w-full max-w-xs space-y-8"
+        >
+          <motion.div
+            variants={{
+              hidden: { opacity: 0, y: 10 },
+              show: { opacity: 1, y: 0, transition: { duration: 0.5 } },
+            }}
+            className="flex items-center gap-2"
+          >
+            <Circle className="w-5 h-5 fill-white text-white" />
+            <span className="text-xl font-semibold tracking-tight">Bytwave</span>
+          </motion.div>
 
-        <div className="relative rounded-2xl border border-border bg-card/70 backdrop-blur-xl p-8 md:p-10">
-          <div className="flex flex-col items-center mb-6">
-            <div className="flex items-center gap-2 mb-3">
-              <LogoMark className="w-7 h-7 drop-shadow-[0_0_18px_rgba(26,213,230,0.5)]" />
-              <span className="font-display font-bold text-xl tracking-tight">
-                Byt<span className="gradient-text-primary">wave</span>
-              </span>
-            </div>
-            <WaveArt className="w-20 -mt-1 -mb-2 opacity-90" />
+          <motion.div
+            variants={{
+              hidden: { opacity: 0, y: 10 },
+              show: { opacity: 1, y: 0, transition: { duration: 0.5 } },
+            }}
+            className="space-y-3"
+          >
+            <h1 className="text-4xl font-medium tracking-tight whitespace-nowrap">
+              Entre na Bytwave
+            </h1>
+            <p className="text-white/60 text-sm leading-relaxed px-4">
+              3 passos rápidos pra ativar sua conta e começar a operar.
+            </p>
+          </motion.div>
+
+          <motion.div
+            variants={{
+              hidden: { opacity: 0, y: 10 },
+              show: { opacity: 1, y: 0, transition: { duration: 0.5 } },
+            }}
+            className="space-y-2"
+          >
+            <StepItem number={1} text="Cadastre sua identidade" active />
+            <StepItem number={2} text="Conecte sua Binance" />
+            <StepItem number={3} text="Configure o bot" />
+          </motion.div>
+        </motion.div>
+      </aside>
+
+      {/* ─── RIGHT (Form) ─── */}
+      <section className="flex-1 flex flex-col items-center justify-center py-12 lg:py-6 px-4 sm:px-12 lg:px-16 xl:px-24 overflow-y-auto lg:overflow-hidden">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.8, ease: 'easeOut' }}
+          className="w-full max-w-xl space-y-8 lg:space-y-6 sm:space-y-10"
+        >
+          {/* Logo mobile */}
+          <div className="flex items-center gap-2 lg:hidden">
+            <Circle className="w-5 h-5 fill-white text-white" />
+            <span className="text-lg font-semibold tracking-tight">Bytwave</span>
           </div>
 
-          <div className="text-center mb-8">
-            <h1 className="font-display font-bold text-2xl md:text-3xl tracking-tight mb-2">
-              Criar sua conta
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Cadastro grátis. Você ganha <span className="text-primary font-semibold">100 tokens</span> para começar.
+          {/* Header */}
+          <div className="space-y-1">
+            <h2 className="text-3xl font-medium tracking-tight">
+              Crie sua conta
+            </h2>
+            <p className="text-white/40 text-sm">
+              Preencha os dados pra começar a usar o bot.
             </p>
           </div>
 
+          {/* Social buttons */}
+          <div className="grid grid-cols-2 gap-4">
+            <SocialButton icon={<Chrome className="w-4 h-4" />} label="Google" />
+            <SocialButton icon={<Github className="w-4 h-4" />} label="Github" />
+          </div>
+
+          {/* Divider */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-white/10" />
+            </div>
+            <div className="relative flex justify-center">
+              <span className="bg-black px-4 text-xs font-medium text-white/40 uppercase tracking-widest">
+                Ou
+              </span>
+            </div>
+          </div>
+
+          {/* Form */}
           <form onSubmit={onSubmit} className="space-y-4">
-            <Field label="Nome">
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Como prefere ser chamado"
-                className="w-full bg-transparent border-b border-border focus:border-primary outline-none px-1 py-2 text-foreground placeholder:text-muted-foreground/60 transition-colors"
+            <div className="grid grid-cols-2 gap-4">
+              <InputGroup
+                label="Nome"
+                placeholder="Pedro"
+                value={firstName}
+                onChange={setFirstName}
               />
-            </Field>
-
-            <Field label="E-mail">
-              <input
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                className="w-full bg-transparent border-b border-border focus:border-primary outline-none px-1 py-2 text-foreground placeholder:text-muted-foreground/60 transition-colors"
+              <InputGroup
+                label="Sobrenome"
+                placeholder="Silva"
+                value={lastName}
+                onChange={setLastName}
               />
-            </Field>
+            </div>
 
-            <Field label="Senha (mín. 8 caracteres)">
+            <InputGroup
+              label="E-mail"
+              placeholder="voce@example.com"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={setEmail}
+              required
+            />
+
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-white">
+                Senha
+              </label>
               <div className="relative">
                 <input
                   type={show ? 'text' : 'password'}
@@ -124,33 +209,22 @@ export default function Register() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-transparent border-b border-border focus:border-primary outline-none px-1 py-2 pr-9 text-foreground placeholder:text-muted-foreground/60 transition-colors"
+                  className="w-full bg-brand-gray border-none rounded-xl h-11 px-4 pr-10 text-white placeholder:text-white/20 focus:ring-2 focus:ring-white/20 focus:outline-none transition-shadow"
                 />
                 <button
                   type="button"
                   onClick={() => setShow((v) => !v)}
-                  className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors"
                   aria-label="mostrar/ocultar senha"
                 >
-                  {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {show ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                 </button>
               </div>
-            </Field>
-
-            <Field label="Confirmar senha">
-              <input
-                type={show ? 'text' : 'password'}
-                autoComplete="new-password"
-                required
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-                placeholder="••••••••"
-                className="w-full bg-transparent border-b border-border focus:border-primary outline-none px-1 py-2 text-foreground placeholder:text-muted-foreground/60 transition-colors"
-              />
-            </Field>
+              <p className="text-xs text-white/30">Mínimo de 8 caracteres.</p>
+            </div>
 
             {error && (
-              <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 flex items-center gap-2">
+              <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2 flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 {error}
               </div>
@@ -158,33 +232,104 @@ export default function Register() {
 
             <button
               type="submit"
-              disabled={loading || !email || !password || !confirm}
-              className="w-full flex items-center justify-center gap-2 font-display font-semibold text-sm tracking-wider rounded-full bg-primary text-primary-foreground py-3.5 transition-all duration-300 hover:scale-[1.02] disabled:opacity-60 disabled:cursor-not-allowed box-glow"
+              disabled={loading || !email || !password}
+              className="w-full h-14 bg-white text-black font-semibold rounded-xl hover:bg-white/90 active:scale-[0.98] mt-4 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
               {loading ? 'Criando...' : 'Criar conta'}
             </button>
 
-            <p className="text-center text-sm text-muted-foreground pt-2">
+            <p className="text-center text-sm text-white/50 pt-2">
               Já tem conta?{' '}
-              <Link to="/login" className="text-primary hover:underline">
+              <Link to="/login" className="text-white hover:underline">
                 Entrar
               </Link>
             </p>
           </form>
-        </div>
-      </motion.div>
+        </motion.div>
+      </section>
     </main>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+// ─── Reusable components ─────────────────────────────────────
+
+function StepItem({
+  number,
+  text,
+  active,
+}: {
+  number: number;
+  text: string;
+  active?: boolean;
+}) {
   return (
-    <div>
-      <label className="block text-[10px] font-display font-semibold tracking-[0.2em] uppercase text-muted-foreground mb-1.5">
-        {label}
-      </label>
-      {children}
+    <div
+      className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
+        active
+          ? 'bg-white text-black border border-white'
+          : 'bg-brand-gray text-white border-none'
+      }`}
+    >
+      <div
+        className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold ${
+          active ? 'bg-black text-white' : 'bg-white/10 text-white/40'
+        }`}
+      >
+        {active ? <Check className="w-3.5 h-3.5" /> : number}
+      </div>
+      <span className="text-sm font-medium">{text}</span>
+    </div>
+  );
+}
+
+function SocialButton({
+  icon,
+  label,
+}: {
+  icon: ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      className="flex items-center justify-center gap-2 h-11 bg-black border border-white/10 rounded-xl hover:bg-white/5 text-sm font-medium transition-colors"
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+function InputGroup({
+  label,
+  placeholder,
+  type = 'text',
+  value,
+  onChange,
+  autoComplete,
+  required,
+}: {
+  label: string;
+  placeholder?: string;
+  type?: string;
+  value: string;
+  onChange: (v: string) => void;
+  autoComplete?: string;
+  required?: boolean;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="block text-sm font-medium text-white">{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        required={required}
+        className="w-full bg-brand-gray border-none rounded-xl h-11 px-4 text-white placeholder:text-white/20 focus:ring-2 focus:ring-white/20 focus:outline-none transition-shadow"
+      />
     </div>
   );
 }

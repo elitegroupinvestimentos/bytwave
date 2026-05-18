@@ -25,6 +25,7 @@ export default {
           DEFAULT: 'hsl(220 15% 10%)',
           foreground: 'hsl(0 0% 90%)',
         },
+        'brand-gray': '#1A1A1A',
       },
       fontFamily: {
         display: ['"IBM Plex Sans"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
