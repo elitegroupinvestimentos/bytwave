@@ -38,6 +38,37 @@ import { supabase } from '../services/supabase/client';
 
 export const router = Router();
 
+// ── Marketing overrides (display) ──────────────────────────────────────────
+// Lê a coluna users.marketing_overrides. Quando o admin marca esses campos
+// pra uma conta de demo, eles substituem os valores reais nas respostas
+// que alimentam o dashboard.
+interface MarketingOverrides {
+  balance?: number;
+  realized_total?: number;
+  today_pnl?: number;
+}
+
+async function getMarketingOverrides(user_id: string): Promise<MarketingOverrides | null> {
+  try {
+    const { supabase } = await import('../services/supabase/client');
+    const { data, error } = await supabase
+      .from('users')
+      .select('marketing_overrides')
+      .eq('id', user_id)
+      .maybeSingle();
+    if (error) return null;
+    const o = (data as any)?.marketing_overrides;
+    if (!o || typeof o !== 'object') return null;
+    return {
+      balance: typeof o.balance === 'number' ? o.balance : undefined,
+      realized_total: typeof o.realized_total === 'number' ? o.realized_total : undefined,
+      today_pnl: typeof o.today_pnl === 'number' ? o.today_pnl : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // helper para tratar errors uniformes
 function ah(fn: (req: Request, res: Response) => Promise<unknown>) {
   return (req: Request, res: Response, next: NextFunction) => {
@@ -212,6 +243,7 @@ router.post(
 );
 
 // Endpoint utilitário para validar credenciais (chama /balance).
+// Aplica marketing_overrides.balance se estiver setado pelo admin.
 router.get(
   '/binance/test/:user_id',
   requireAuth,
@@ -219,6 +251,16 @@ router.get(
   ah(async (req, res) => {
     const client = await getBinanceClient(req.params.user_id);
     const { total, available } = await client.getUsdtBalance();
+
+    const override = await getMarketingOverrides(req.params.user_id);
+    if (override?.balance != null) {
+      return res.json({
+        ok: true,
+        mode: env.BINANCE_MODE,
+        total: override.balance,
+        available: override.balance,
+      });
+    }
     res.json({ ok: true, mode: env.BINANCE_MODE, total, available });
   }),
 );
@@ -684,7 +726,19 @@ router.get(
   requireAuth,
   requireSelf((req) => req.params.user_id),
   ah(async (req, res) => {
-    const data = await getPerformanceSummary(req.params.user_id);
+    const data: any = await getPerformanceSummary(req.params.user_id);
+    const override = await getMarketingOverrides(req.params.user_id);
+    if (override) {
+      if (override.realized_total != null) {
+        data.realized_pnl_total = override.realized_total;
+      }
+      if (override.balance != null && data.last_snapshot) {
+        data.last_snapshot.total_balance = override.balance;
+      }
+      if (override.today_pnl != null) {
+        data.today_pnl_override = override.today_pnl;
+      }
+    }
     res.json(data);
   }),
 );

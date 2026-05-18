@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, Plus, Eye, X } from 'lucide-react';
+import { Search, Plus, Eye, X, Sparkles, Save, Trash2 } from 'lucide-react';
 import { AdminLayout } from '../../components/admin/AdminLayout';
 import { admin, AdminUserDetail, AdminUserRow } from '../../api/admin';
 
@@ -12,6 +12,13 @@ export default function AdminUsers() {
   const [grantAmount, setGrantAmount] = useState(100);
   const [grantNote, setGrantNote] = useState('');
   const [granting, setGranting] = useState(false);
+
+  // Marketing overrides (display only)
+  const [ovBalance, setOvBalance] = useState<string>('');
+  const [ovRealizedTotal, setOvRealizedTotal] = useState<string>('');
+  const [ovTodayPnl, setOvTodayPnl] = useState<string>('');
+  const [savingOverrides, setSavingOverrides] = useState(false);
+  const [overridesMsg, setOverridesMsg] = useState<{ ok: boolean; msg: string } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -31,8 +38,58 @@ export default function AdminUsers() {
   async function openDetail(id: string) {
     setSelected(id);
     setDetail(null);
+    setOverridesMsg(null);
     const d = await admin.user(id);
     setDetail(d);
+    // Hidrata inputs com overrides atuais.
+    const o = (d.user as any).marketing_overrides ?? {};
+    setOvBalance(typeof o.balance === 'number' ? String(o.balance) : '');
+    setOvRealizedTotal(typeof o.realized_total === 'number' ? String(o.realized_total) : '');
+    setOvTodayPnl(typeof o.today_pnl === 'number' ? String(o.today_pnl) : '');
+  }
+
+  async function saveOverrides() {
+    if (!selected) return;
+    setSavingOverrides(true);
+    setOverridesMsg(null);
+    try {
+      const body = {
+        balance: ovBalance === '' ? null : Number(ovBalance),
+        realized_total: ovRealizedTotal === '' ? null : Number(ovRealizedTotal),
+        today_pnl: ovTodayPnl === '' ? null : Number(ovTodayPnl),
+      };
+      await admin.setOverrides(selected, body);
+      const d = await admin.user(selected);
+      setDetail(d);
+      setOverridesMsg({ ok: true, msg: 'Overrides salvos.' });
+    } catch (err: any) {
+      setOverridesMsg({ ok: false, msg: err?.message ?? 'Erro ao salvar.' });
+    } finally {
+      setSavingOverrides(false);
+    }
+  }
+
+  async function clearOverrides() {
+    if (!selected) return;
+    setSavingOverrides(true);
+    setOverridesMsg(null);
+    try {
+      await admin.setOverrides(selected, {
+        balance: null,
+        realized_total: null,
+        today_pnl: null,
+      });
+      setOvBalance('');
+      setOvRealizedTotal('');
+      setOvTodayPnl('');
+      const d = await admin.user(selected);
+      setDetail(d);
+      setOverridesMsg({ ok: true, msg: 'Overrides removidos — usuário volta aos valores reais.' });
+    } catch (err: any) {
+      setOverridesMsg({ ok: false, msg: err?.message ?? 'Erro ao limpar.' });
+    } finally {
+      setSavingOverrides(false);
+    }
   }
 
   async function handleGrant() {
@@ -184,6 +241,63 @@ export default function AdminUsers() {
                   </div>
                 </div>
 
+                {/* Marketing overrides — display only */}
+                <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-4">
+                  <div className="flex items-center gap-2 text-sm font-semibold mb-2">
+                    <Sparkles className="w-4 h-4 text-yellow-400" />
+                    Conta marketing · overrides de display
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mb-3">
+                    Valores que substituem os reais SÓ no que o usuário vê no
+                    dashboard. Deixe em branco pra usar o valor real.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <OvField
+                      label="Saldo banca ($)"
+                      value={ovBalance}
+                      onChange={setOvBalance}
+                      placeholder="ex: 5000.00"
+                    />
+                    <OvField
+                      label="Lucro Realizado total ($)"
+                      value={ovRealizedTotal}
+                      onChange={setOvRealizedTotal}
+                      placeholder="ex: 1250.50"
+                    />
+                    <OvField
+                      label="Lucro do dia ($)"
+                      value={ovTodayPnl}
+                      onChange={setOvTodayPnl}
+                      placeholder="ex: 47.20"
+                    />
+                  </div>
+                  {overridesMsg && (
+                    <p
+                      className={`mt-3 text-xs ${overridesMsg.ok ? 'text-accent' : 'text-red-300'}`}
+                    >
+                      {overridesMsg.msg}
+                    </p>
+                  )}
+                  <div className="flex items-center gap-2 mt-3">
+                    <button
+                      onClick={saveOverrides}
+                      disabled={savingOverrides}
+                      className="flex items-center gap-2 px-4 h-9 rounded-full bg-primary text-primary-foreground text-sm font-medium disabled:opacity-60 hover:opacity-90"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      {savingOverrides ? 'Salvando...' : 'Salvar overrides'}
+                    </button>
+                    <button
+                      onClick={clearOverrides}
+                      disabled={savingOverrides}
+                      className="flex items-center gap-2 px-4 h-9 rounded-full border border-border text-sm text-muted-foreground hover:border-red-500/40 hover:text-red-300"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Limpar
+                    </button>
+                  </div>
+                </div>
+
                 {/* Histórico de tokens */}
                 <Section title={`Últimas transações de tokens (${detail.recent_token_transactions.length})`}>
                   {detail.recent_token_transactions.length === 0 ? (
@@ -246,6 +360,34 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <div>
       <div className="text-xs font-display tracking-wider uppercase text-muted-foreground mb-2">{title}</div>
       {children}
+    </div>
+  );
+}
+
+function OvField({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-[10px] font-display font-semibold tracking-[0.2em] uppercase text-muted-foreground mb-1">
+        {label}
+      </label>
+      <input
+        type="number"
+        step="0.01"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full bg-secondary/40 border border-border rounded-lg px-3 py-2 text-sm font-mono outline-none focus:border-primary/50"
+      />
     </div>
   );
 }

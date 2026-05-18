@@ -468,3 +468,41 @@ adminRouter.delete(
     res.json({ ok: true });
   }),
 );
+
+// ── Marketing overrides ────────────────────────────────────────────────────
+// PATCH /admin/users/:id/overrides — define os valores de display da conta.
+// Envia null/undefined nos campos pra REMOVER override (volta a usar real).
+
+const overridesSchema = z.object({
+  balance: z.number().nullable().optional(),
+  realized_total: z.number().nullable().optional(),
+  today_pnl: z.number().nullable().optional(),
+});
+
+adminRouter.patch(
+  '/users/:id/overrides',
+  ah(async (req, res) => {
+    const body = overridesSchema.parse(req.body);
+    // Filtra nulls/undefined: só guarda chaves com número.
+    const overrides: Record<string, number> = {};
+    if (typeof body.balance === 'number') overrides.balance = body.balance;
+    if (typeof body.realized_total === 'number') overrides.realized_total = body.realized_total;
+    if (typeof body.today_pnl === 'number') overrides.today_pnl = body.today_pnl;
+
+    const valueToStore = Object.keys(overrides).length ? overrides : null;
+    const { error } = await supabase
+      .from('users')
+      .update({ marketing_overrides: valueToStore })
+      .eq('id', req.params.id);
+    if (error) throw error;
+
+    await botLog({
+      level: 'info',
+      scope: 'admin',
+      user_id: req.params.id,
+      message: `Marketing overrides ${valueToStore ? 'atualizados' : 'limpos'} (admin)`,
+      data: valueToStore ?? {},
+    });
+    res.json({ ok: true, marketing_overrides: valueToStore });
+  }),
+);

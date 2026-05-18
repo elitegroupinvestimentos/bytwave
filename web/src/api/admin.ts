@@ -100,6 +100,14 @@ export const admin = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  setOverrides: (
+    id: string,
+    body: { balance?: number | null; realized_total?: number | null; today_pnl?: number | null },
+  ) =>
+    http<{ ok: true; marketing_overrides: Record<string, number> | null }>(
+      `/users/${id}/overrides`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    ),
 
   cycles: (status?: 'open' | 'closed' | 'error') =>
     http<any[]>(`/cycles${status ? `?status=${status}` : ''}`),
