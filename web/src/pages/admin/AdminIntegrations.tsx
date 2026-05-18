@@ -45,18 +45,29 @@ export default function AdminIntegrations() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   async function load() {
+    setLoadError(null);
     try {
       const list = await admin.integrations();
-      // Garante card pra cada provider mesmo se DB não tiver linha.
       const byProvider: Record<Provider, Row | undefined> = { google: undefined, facebook: undefined };
       for (const r of list) byProvider[r.provider] = r as Row;
       setRows([
         byProvider.google ?? emptyRow('google'),
         byProvider.facebook ?? emptyRow('facebook'),
       ]);
-    } catch {
-      // segue
+    } catch (err: any) {
+      // Mesmo se o GET falhar (ex: tabela não existe ainda), mostra
+      // os 2 cards vazios pro user poder configurar.
+      setRows([emptyRow('google'), emptyRow('facebook')]);
+      const msg =
+        err instanceof ApiError ? err.body?.message ?? err.message : err?.message;
+      setLoadError(
+        msg?.includes('relation') || msg?.includes('does not exist')
+          ? 'Tabela oauth_providers ainda não existe no Supabase. Rode a migration 006_oauth_providers.sql no SQL Editor.'
+          : msg ?? 'Falha ao carregar integrações.',
+      );
     } finally {
       setLoading(false);
     }
@@ -78,6 +89,13 @@ export default function AdminIntegrations() {
           do provedor.
         </p>
       </div>
+
+      {loadError && (
+        <div className="rounded-xl border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-xs text-yellow-200 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <span>{loadError}</span>
+        </div>
+      )}
 
       {loading ? (
         <div className="text-sm text-muted-foreground flex items-center gap-2">
