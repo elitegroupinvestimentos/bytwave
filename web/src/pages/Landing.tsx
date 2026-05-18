@@ -6,7 +6,7 @@ import { LANGUAGES, useI18n, type Lang } from '../lib/i18n';
 const BG_VIDEO =
   'https://stream.mux.com/BuGGTsiXq1T00WUb8qfURrHkTCbhrkfFLSv4uAOZzdhw.m3u8';
 
-const NAV_ITEMS = ['Platform', 'How it works', 'AI Defense', 'Connections', 'Insights'];
+const NAV_ITEM_KEYS = ['Plataforma', 'Como funciona', 'Defesa IA', 'Conexões', 'Insights'] as const;
 
 function HamburgerButton({ open, onClick }: { open: boolean; onClick: () => void }) {
   return (
@@ -39,6 +39,7 @@ function HamburgerButton({ open, onClick }: { open: boolean; onClick: () => void
 }
 
 function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useI18n();
   return (
     <>
       <div
@@ -66,7 +67,7 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
           }}
         >
           <div className="flex flex-col gap-1">
-            {NAV_ITEMS.map((item, i) => (
+            {NAV_ITEM_KEYS.map((item, i) => (
               <a
                 key={item}
                 href="#"
@@ -79,7 +80,7 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
                   transition: `opacity 0.4s cubic-bezier(0.23,1,0.32,1) ${i * 50 + 80}ms, transform 0.4s cubic-bezier(0.23,1,0.32,1) ${i * 50 + 80}ms, color 0.2s, background 0.2s`,
                 }}
               >
-                {item}
+                {t(item)}
                 <ArrowRight
                   size={14}
                   className="opacity-0 group-hover:opacity-40 -translate-x-1 group-hover:translate-x-0 transition-all duration-200"
@@ -103,7 +104,7 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
               className="block w-full text-center py-3 rounded-full text-black text-sm font-medium transition-all duration-300 hover:opacity-80"
               style={{ fontFamily: 'Inter, sans-serif', backgroundColor: '#ffffff' }}
             >
-              Join the wait
+              {t('Entrar na lista')}
             </Link>
           </div>
         </div>
@@ -113,6 +114,7 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
 }
 
 function Navbar() {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -135,14 +137,14 @@ function Navbar() {
           className="hidden lg:flex items-center gap-1 rounded-full px-2 py-1.5"
           style={{ backgroundColor: '#0C0C0C' }}
         >
-          {NAV_ITEMS.map((item) => (
+          {NAV_ITEM_KEYS.map((item) => (
             <a
               key={item}
               href="#"
               className="text-white/80 hover:text-white text-sm px-4 py-1.5 rounded-full hover:bg-white/10 transition-all duration-200"
               style={{ fontFamily: 'Inter, sans-serif' }}
             >
-              {item}
+              {t(item)}
             </a>
           ))}
         </div>
@@ -153,7 +155,7 @@ function Navbar() {
             className="hidden lg:block text-sm font-medium px-5 py-2 rounded-full text-black transition-all duration-300 hover:opacity-80"
             style={{ fontFamily: 'Inter, sans-serif', backgroundColor: '#ffffff' }}
           >
-            Join the wait
+            {t('Entrar na lista')}
           </Link>
         </div>
       </nav>
@@ -224,6 +226,7 @@ function LangPicker() {
 }
 
 export default function Landing() {
+  const { t } = useI18n();
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
@@ -279,18 +282,18 @@ export default function Landing() {
             fontSize: 'clamp(1.75rem, 5vw, 2.6rem)',
           }}
         >
-          Where precision finds its edge
+          {t('Onde a precisão encontra seu limite')}
           <br className="hidden sm:block" />
-          {' '}and vision rewrites what comes next
+          {' '}{t('e a visão reescreve o que vem a seguir')}
         </h1>
 
         <p
           className="mt-5 md:mt-6 text-white/60 text-sm md:text-base leading-relaxed max-w-xs sm:max-w-sm md:max-w-md"
           style={{ fontFamily: "'Courier New', Courier, monospace", letterSpacing: '0.01em' }}
         >
-          a seamless bridge - where raw ambition
+          {t('uma ponte fluida — onde ambição bruta')}
           <br className="hidden sm:block" />
-          {' '}and machine clarity converge as one
+          {' '}{t('e a clareza da máquina convergem como uma só')}
         </p>
 
         <Link
@@ -298,7 +301,7 @@ export default function Landing() {
           className="mt-7 md:mt-8 flex items-center gap-2.5 px-5 py-2.5 rounded-full text-black text-sm font-medium transition-all duration-300 hover:opacity-80 group"
           style={{ fontFamily: 'Inter, sans-serif', backgroundColor: '#ffffff' }}
         >
-          Watch it unfold
+          {t('Veja em ação')}
           <ArrowRight
             size={15}
             className="group-hover:translate-x-0.5 transition-transform duration-200"
