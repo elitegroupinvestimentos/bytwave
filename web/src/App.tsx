@@ -17,6 +17,7 @@ import AdminTransactions from './pages/admin/AdminTransactions';
 import AdminCycles from './pages/admin/AdminCycles';
 import AdminPacks from './pages/admin/AdminPacks';
 import AdminLogs from './pages/admin/AdminLogs';
+import AdminIntegrations from './pages/admin/AdminIntegrations';
 import AdminDanger from './pages/admin/AdminDanger';
 import { AdminGuard } from './components/admin/AdminGuard';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -98,6 +99,7 @@ export default function App() {
         <Route path="/admin/cycles"       element={<AdminGuard><AdminCycles /></AdminGuard>} />
         <Route path="/admin/packs"        element={<AdminGuard><AdminPacks /></AdminGuard>} />
         <Route path="/admin/logs"         element={<AdminGuard><AdminLogs /></AdminGuard>} />
+        <Route path="/admin/integrations" element={<AdminGuard><AdminIntegrations /></AdminGuard>} />
         <Route path="/admin/danger"       element={<AdminGuard><AdminDanger /></AdminGuard>} />
 
         {/* fallback */}

@@ -132,4 +132,31 @@ export const admin = {
       method: 'POST',
       body: JSON.stringify({ confirm: 'YES_WIPE_EVERYTHING' }),
     }),
+
+  // ── Integrações OAuth ────────────────────────────────────────────
+  integrations: () =>
+    http<
+      Array<{
+        provider: 'google' | 'facebook';
+        client_id: string;
+        client_secret: string; // mascarado: ••••XXXX
+        redirect_uri: string;
+        enabled: boolean;
+        configured: boolean;
+        updated_at: string | null;
+      }>
+    >('/integrations'),
+  integrationSave: (body: {
+    provider: 'google' | 'facebook';
+    client_id: string;
+    client_secret: string;
+    redirect_uri: string;
+    enabled: boolean;
+  }) =>
+    http<{ ok: true }>('/integrations', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  integrationDelete: (provider: 'google' | 'facebook') =>
+    http<{ ok: true }>(`/integrations/${provider}`, { method: 'DELETE' }),
 };

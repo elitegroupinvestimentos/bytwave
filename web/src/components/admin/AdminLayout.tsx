@@ -10,6 +10,7 @@ import {
   ScrollText,
   LogOut,
   AlertOctagon,
+  Plug,
   Menu,
   X,
 } from 'lucide-react';
@@ -23,6 +24,7 @@ const items = [
   { to: '/admin/cycles',       icon: Activity,   label: 'Ciclos' },
   { to: '/admin/packs',        icon: Package,    label: 'Pacotes' },
   { to: '/admin/logs',         icon: ScrollText, label: 'Logs' },
+  { to: '/admin/integrations', icon: Plug,       label: 'Integrações' },
   { to: '/admin/danger',       icon: AlertOctagon, label: 'Zona de risco' },
 ];
 

@@ -5,6 +5,11 @@ import { supabase } from '../services/supabase/client';
 import { grantTokens } from '../services/supabase/tokens';
 import { getBinanceClient, invalidateBinanceClient } from '../services/binance/factory';
 import { botLog } from '../services/logs/logger';
+import {
+  listOAuthProviders,
+  upsertOAuthProvider,
+  deleteOAuthProvider,
+} from '../services/supabase/oauth';
 
 export const adminRouter = Router();
 
@@ -400,5 +405,66 @@ adminRouter.post(
     report.db.deleted_users = (deleted ?? []).length;
 
     res.json({ ok: true, report });
+  }),
+);
+
+// ── Integrações OAuth ──────────────────────────────────────────────────────
+// GET lista provedores (senha aparece mascarada).
+// PUT upsert (provider + client_id/secret/redirect/enabled).
+// DELETE remove credencial.
+
+adminRouter.get(
+  '/integrations',
+  ah(async (_req, res) => {
+    const items = await listOAuthProviders();
+    res.json(
+      items.map((i) => ({
+        ...i,
+        client_secret: i.client_secret ? `••••${i.client_secret.slice(-4)}` : '',
+        configured: Boolean(i.client_id && i.client_secret),
+      })),
+    );
+  }),
+);
+
+const integrationSchema = z.object({
+  provider: z.enum(['google', 'facebook']),
+  client_id: z.string().max(500),
+  client_secret: z.string().max(500),
+  redirect_uri: z.string().max(500),
+  enabled: z.boolean(),
+});
+
+adminRouter.put(
+  '/integrations',
+  ah(async (req, res) => {
+    const body = integrationSchema.parse(req.body);
+    await upsertOAuthProvider(body);
+    await botLog({
+      level: 'info',
+      scope: 'admin',
+      message: `OAuth ${body.provider} ${body.enabled ? 'ativado' : 'desativado'} (admin)`,
+      data: {
+        provider: body.provider,
+        enabled: body.enabled,
+        has_client_id: Boolean(body.client_id),
+        has_secret: Boolean(body.client_secret),
+      },
+    });
+    res.json({ ok: true });
+  }),
+);
+
+adminRouter.delete(
+  '/integrations/:provider',
+  ah(async (req, res) => {
+    const p = z.enum(['google', 'facebook']).parse(req.params.provider);
+    await deleteOAuthProvider(p);
+    await botLog({
+      level: 'info',
+      scope: 'admin',
+      message: `OAuth ${p} removido (admin)`,
+    });
+    res.json({ ok: true });
   }),
 );
