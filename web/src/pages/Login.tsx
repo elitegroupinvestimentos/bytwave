@@ -55,11 +55,11 @@ export default function Login() {
 
   return (
     <main
-      className="flex min-h-screen w-full bg-black selection:bg-white/30 p-2 transition-all duration-500 lg:h-screen lg:overflow-hidden lg:p-4 text-white antialiased"
+      className="flex flex-col lg:flex-row min-h-screen w-full bg-black selection:bg-white/30 p-2 transition-all duration-500 lg:h-screen lg:overflow-hidden lg:p-4 text-white antialiased"
       style={{ fontFamily: FONT }}
     >
       {/* ─── LEFT (Hero + video) ─── */}
-      <aside className="hidden lg:flex relative w-[52%] flex-col items-center justify-center px-12 rounded-3xl overflow-hidden shadow-2xl h-full">
+      <aside className="flex relative w-full h-[280px] lg:h-full lg:w-[52%] flex-col items-center justify-center px-6 lg:px-12 rounded-3xl overflow-hidden shadow-2xl">
         <video
           className="absolute inset-0 w-full h-full object-cover"
           autoPlay
@@ -97,10 +97,10 @@ export default function Login() {
             }}
             className="space-y-3"
           >
-            <h1 className="text-4xl font-medium tracking-tight whitespace-nowrap">
+            <h1 className="text-2xl lg:text-4xl font-medium tracking-tight">
               Bem-vindo de volta
             </h1>
-            <p className="text-white/60 text-sm leading-relaxed px-4">
+            <p className="text-white/60 text-xs lg:text-sm leading-relaxed lg:px-4">
               Entre pra acompanhar seus ciclos e operar 24/7.
             </p>
           </motion.div>
@@ -110,7 +110,7 @@ export default function Login() {
               hidden: { opacity: 0, y: 10 },
               show: { opacity: 1, y: 0, transition: { duration: 0.5 } },
             }}
-            className="space-y-2"
+            className="hidden lg:block space-y-2"
           >
             <Highlight icon={<Activity className="w-4 h-4" />} text="Bot rodando enquanto você dorme" />
             <Highlight icon={<ShieldCheck className="w-4 h-4" />} text="Proteção de drawdown ativa" />

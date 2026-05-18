@@ -64,11 +64,11 @@ export default function Register() {
 
   return (
     <main
-      className="flex min-h-screen w-full bg-black selection:bg-white/30 p-2 transition-all duration-500 lg:h-screen lg:overflow-hidden lg:p-4 text-white antialiased"
+      className="flex flex-col lg:flex-row min-h-screen w-full bg-black selection:bg-white/30 p-2 transition-all duration-500 lg:h-screen lg:overflow-hidden lg:p-4 text-white antialiased"
       style={{ fontFamily: FONT }}
     >
       {/* ─── LEFT (Hero + video) ─── */}
-      <aside className="hidden lg:flex relative w-[52%] flex-col items-center justify-center px-12 rounded-3xl overflow-hidden shadow-2xl h-full">
+      <aside className="flex relative w-full h-[320px] lg:h-full lg:w-[52%] flex-col items-center justify-center px-6 lg:px-12 rounded-3xl overflow-hidden shadow-2xl">
         <video
           className="absolute inset-0 w-full h-full object-cover"
           autoPlay
@@ -106,10 +106,10 @@ export default function Register() {
             }}
             className="space-y-3"
           >
-            <h1 className="text-4xl font-medium tracking-tight whitespace-nowrap">
+            <h1 className="text-2xl lg:text-4xl font-medium tracking-tight">
               Entre na Bytwave
             </h1>
-            <p className="text-white/60 text-sm leading-relaxed px-4">
+            <p className="text-white/60 text-xs lg:text-sm leading-relaxed lg:px-4">
               3 passos rápidos pra ativar sua conta e começar a operar.
             </p>
           </motion.div>
@@ -119,7 +119,7 @@ export default function Register() {
               hidden: { opacity: 0, y: 10 },
               show: { opacity: 1, y: 0, transition: { duration: 0.5 } },
             }}
-            className="space-y-2"
+            className="hidden lg:block space-y-2"
           >
             <StepItem number={1} text="Cadastre sua identidade" active />
             <StepItem number={2} text="Conecte sua Binance" />
