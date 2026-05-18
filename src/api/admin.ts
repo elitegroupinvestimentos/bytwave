@@ -469,25 +469,25 @@ adminRouter.delete(
   }),
 );
 
-// ── Marketing overrides ────────────────────────────────────────────────────
-// PATCH /admin/users/:id/overrides — define os valores de display da conta.
-// Envia null/undefined nos campos pra REMOVER override (volta a usar real).
+// ── Marketing overrides (multiplicadores) ──────────────────────────────────
+// PATCH /admin/users/:id/overrides — define os FATORES de display da conta.
+// Cada fator multiplica o valor real (1 = sem alteração). Envia null/undef
+// nos campos pra REMOVER aquele override.
 
 const overridesSchema = z.object({
-  balance: z.number().nullable().optional(),
-  realized_total: z.number().nullable().optional(),
-  today_pnl: z.number().nullable().optional(),
+  balance_factor: z.number().min(0).max(1_000_000).nullable().optional(),
+  realized_factor: z.number().min(0).max(1_000_000).nullable().optional(),
+  today_pnl_factor: z.number().min(0).max(1_000_000).nullable().optional(),
 });
 
 adminRouter.patch(
   '/users/:id/overrides',
   ah(async (req, res) => {
     const body = overridesSchema.parse(req.body);
-    // Filtra nulls/undefined: só guarda chaves com número.
     const overrides: Record<string, number> = {};
-    if (typeof body.balance === 'number') overrides.balance = body.balance;
-    if (typeof body.realized_total === 'number') overrides.realized_total = body.realized_total;
-    if (typeof body.today_pnl === 'number') overrides.today_pnl = body.today_pnl;
+    if (typeof body.balance_factor === 'number') overrides.balance_factor = body.balance_factor;
+    if (typeof body.realized_factor === 'number') overrides.realized_factor = body.realized_factor;
+    if (typeof body.today_pnl_factor === 'number') overrides.today_pnl_factor = body.today_pnl_factor;
 
     const valueToStore = Object.keys(overrides).length ? overrides : null;
     const { error } = await supabase

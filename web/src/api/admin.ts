@@ -102,7 +102,11 @@ export const admin = {
     }),
   setOverrides: (
     id: string,
-    body: { balance?: number | null; realized_total?: number | null; today_pnl?: number | null },
+    body: {
+      balance_factor?: number | null;
+      realized_factor?: number | null;
+      today_pnl_factor?: number | null;
+    },
   ) =>
     http<{ ok: true; marketing_overrides: Record<string, number> | null }>(
       `/users/${id}/overrides`,

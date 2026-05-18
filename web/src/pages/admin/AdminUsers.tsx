@@ -13,10 +13,10 @@ export default function AdminUsers() {
   const [grantNote, setGrantNote] = useState('');
   const [granting, setGranting] = useState(false);
 
-  // Marketing overrides (display only)
-  const [ovBalance, setOvBalance] = useState<string>('');
-  const [ovRealizedTotal, setOvRealizedTotal] = useState<string>('');
-  const [ovTodayPnl, setOvTodayPnl] = useState<string>('');
+  // Marketing overrides — multiplicadores (1 = sem alteração)
+  const [ovBalanceFactor, setOvBalanceFactor] = useState<string>('');
+  const [ovRealizedFactor, setOvRealizedFactor] = useState<string>('');
+  const [ovTodayFactor, setOvTodayFactor] = useState<string>('');
   const [savingOverrides, setSavingOverrides] = useState(false);
   const [overridesMsg, setOverridesMsg] = useState<{ ok: boolean; msg: string } | null>(null);
 
@@ -41,11 +41,10 @@ export default function AdminUsers() {
     setOverridesMsg(null);
     const d = await admin.user(id);
     setDetail(d);
-    // Hidrata inputs com overrides atuais.
     const o = (d.user as any).marketing_overrides ?? {};
-    setOvBalance(typeof o.balance === 'number' ? String(o.balance) : '');
-    setOvRealizedTotal(typeof o.realized_total === 'number' ? String(o.realized_total) : '');
-    setOvTodayPnl(typeof o.today_pnl === 'number' ? String(o.today_pnl) : '');
+    setOvBalanceFactor(typeof o.balance_factor === 'number' ? String(o.balance_factor) : '');
+    setOvRealizedFactor(typeof o.realized_factor === 'number' ? String(o.realized_factor) : '');
+    setOvTodayFactor(typeof o.today_pnl_factor === 'number' ? String(o.today_pnl_factor) : '');
   }
 
   async function saveOverrides() {
@@ -54,14 +53,14 @@ export default function AdminUsers() {
     setOverridesMsg(null);
     try {
       const body = {
-        balance: ovBalance === '' ? null : Number(ovBalance),
-        realized_total: ovRealizedTotal === '' ? null : Number(ovRealizedTotal),
-        today_pnl: ovTodayPnl === '' ? null : Number(ovTodayPnl),
+        balance_factor: ovBalanceFactor === '' ? null : Number(ovBalanceFactor),
+        realized_factor: ovRealizedFactor === '' ? null : Number(ovRealizedFactor),
+        today_pnl_factor: ovTodayFactor === '' ? null : Number(ovTodayFactor),
       };
       await admin.setOverrides(selected, body);
       const d = await admin.user(selected);
       setDetail(d);
-      setOverridesMsg({ ok: true, msg: 'Overrides salvos.' });
+      setOverridesMsg({ ok: true, msg: 'Multiplicadores salvos.' });
     } catch (err: any) {
       setOverridesMsg({ ok: false, msg: err?.message ?? 'Erro ao salvar.' });
     } finally {
@@ -75,16 +74,16 @@ export default function AdminUsers() {
     setOverridesMsg(null);
     try {
       await admin.setOverrides(selected, {
-        balance: null,
-        realized_total: null,
-        today_pnl: null,
+        balance_factor: null,
+        realized_factor: null,
+        today_pnl_factor: null,
       });
-      setOvBalance('');
-      setOvRealizedTotal('');
-      setOvTodayPnl('');
+      setOvBalanceFactor('');
+      setOvRealizedFactor('');
+      setOvTodayFactor('');
       const d = await admin.user(selected);
       setDetail(d);
-      setOverridesMsg({ ok: true, msg: 'Overrides removidos — usuário volta aos valores reais.' });
+      setOverridesMsg({ ok: true, msg: 'Multiplicadores removidos — usuário volta aos valores reais.' });
     } catch (err: any) {
       setOverridesMsg({ ok: false, msg: err?.message ?? 'Erro ao limpar.' });
     } finally {
@@ -248,27 +247,30 @@ export default function AdminUsers() {
                     Conta marketing · overrides de display
                   </div>
                   <p className="text-[11px] text-muted-foreground mb-3">
-                    Valores que substituem os reais SÓ no que o usuário vê no
-                    dashboard. Deixe em branco pra usar o valor real.
+                    <strong>Multiplicadores</strong> aplicados aos valores reais
+                    (display × fator). Os números continuam vivos e se mexem com
+                    o bot, só em escala maior. <strong>1</strong> = sem alteração;
+                    <strong> 100</strong> = mostra 100×. Deixe em branco pra usar
+                    o valor real puro.
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <OvField
-                      label="Saldo banca ($)"
-                      value={ovBalance}
-                      onChange={setOvBalance}
-                      placeholder="ex: 5000.00"
+                      label="Saldo banca × fator"
+                      value={ovBalanceFactor}
+                      onChange={setOvBalanceFactor}
+                      placeholder="ex: 2 (dobra saldo)"
                     />
                     <OvField
-                      label="Lucro Realizado total ($)"
-                      value={ovRealizedTotal}
-                      onChange={setOvRealizedTotal}
-                      placeholder="ex: 1250.50"
+                      label="Lucro Realizado × fator"
+                      value={ovRealizedFactor}
+                      onChange={setOvRealizedFactor}
+                      placeholder="ex: 50"
                     />
                     <OvField
-                      label="Lucro do dia ($)"
-                      value={ovTodayPnl}
-                      onChange={setOvTodayPnl}
-                      placeholder="ex: 47.20"
+                      label="Lucro do dia × fator"
+                      value={ovTodayFactor}
+                      onChange={setOvTodayFactor}
+                      placeholder="ex: 100"
                     />
                   </div>
                   {overridesMsg && (

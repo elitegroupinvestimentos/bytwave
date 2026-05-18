@@ -39,13 +39,13 @@ import { supabase } from '../services/supabase/client';
 export const router = Router();
 
 // ── Marketing overrides (display) ──────────────────────────────────────────
-// Lê a coluna users.marketing_overrides. Quando o admin marca esses campos
-// pra uma conta de demo, eles substituem os valores reais nas respostas
-// que alimentam o dashboard.
+// Multiplicadores aplicados aos valores REAIS. Display = real × fator.
+// Quando o fator é 1 (ou ausente), o valor real é exibido sem alteração.
+// Mantém os números "vivos" — sobem/descem proporcional ao bot, em escala.
 interface MarketingOverrides {
-  balance?: number;
-  realized_total?: number;
-  today_pnl?: number;
+  balance_factor?: number;
+  realized_factor?: number;
+  today_pnl_factor?: number;
 }
 
 async function getMarketingOverrides(user_id: string): Promise<MarketingOverrides | null> {
@@ -60,9 +60,10 @@ async function getMarketingOverrides(user_id: string): Promise<MarketingOverride
     const o = (data as any)?.marketing_overrides;
     if (!o || typeof o !== 'object') return null;
     return {
-      balance: typeof o.balance === 'number' ? o.balance : undefined,
-      realized_total: typeof o.realized_total === 'number' ? o.realized_total : undefined,
-      today_pnl: typeof o.today_pnl === 'number' ? o.today_pnl : undefined,
+      balance_factor: typeof o.balance_factor === 'number' ? o.balance_factor : undefined,
+      realized_factor: typeof o.realized_factor === 'number' ? o.realized_factor : undefined,
+      today_pnl_factor:
+        typeof o.today_pnl_factor === 'number' ? o.today_pnl_factor : undefined,
     };
   } catch {
     return null;
@@ -253,12 +254,13 @@ router.get(
     const { total, available } = await client.getUsdtBalance();
 
     const override = await getMarketingOverrides(req.params.user_id);
-    if (override?.balance != null) {
+    const f = override?.balance_factor;
+    if (typeof f === 'number' && f > 0 && f !== 1) {
       return res.json({
         ok: true,
         mode: env.BINANCE_MODE,
-        total: override.balance,
-        available: override.balance,
+        total: total * f,
+        available: available * f,
       });
     }
     res.json({ ok: true, mode: env.BINANCE_MODE, total, available });
@@ -729,14 +731,18 @@ router.get(
     const data: any = await getPerformanceSummary(req.params.user_id);
     const override = await getMarketingOverrides(req.params.user_id);
     if (override) {
-      if (override.realized_total != null) {
-        data.realized_pnl_total = override.realized_total;
+      const rf = override.realized_factor;
+      if (typeof rf === 'number' && rf > 0 && rf !== 1) {
+        data.realized_pnl_total = Number(data.realized_pnl_total ?? 0) * rf;
       }
-      if (override.balance != null && data.last_snapshot) {
-        data.last_snapshot.total_balance = override.balance;
+      const bf = override.balance_factor;
+      if (typeof bf === 'number' && bf > 0 && bf !== 1 && data.last_snapshot) {
+        data.last_snapshot.total_balance =
+          Number(data.last_snapshot.total_balance ?? 0) * bf;
       }
-      if (override.today_pnl != null) {
-        data.today_pnl_override = override.today_pnl;
+      const tf = override.today_pnl_factor;
+      if (typeof tf === 'number' && tf > 0 && tf !== 1) {
+        data.today_pnl_factor = tf; // frontend pode aplicar no recorte de hoje
       }
     }
     res.json(data);
