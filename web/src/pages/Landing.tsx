@@ -274,7 +274,7 @@ export default function Landing() {
 
       <Navbar />
 
-      <div className="relative z-20 flex flex-col items-center text-center pt-[90px] md:pt-[120px] px-5 sm:px-8">
+      <div className="relative z-20 flex flex-col items-center text-center pt-[180px] sm:pt-[140px] md:pt-[160px] px-5 sm:px-8">
         <h1
           className="text-white font-normal leading-[1.12] tracking-tight max-w-3xl"
           style={{
