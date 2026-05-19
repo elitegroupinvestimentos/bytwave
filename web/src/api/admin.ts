@@ -204,4 +204,45 @@ export const admin = {
     }),
   paymentGatewayDelete: (provider: 'zyropay') =>
     http<{ ok: true }>(`/payment-gateways/${provider}`, { method: 'DELETE' }),
+
+  // ── Payments (PIX intents) ────────────────────────────────────────
+  payments: (opts?: { status?: string; search?: string; start?: string; end?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (opts?.status) qs.set('status', opts.status);
+    if (opts?.search) qs.set('search', opts.search);
+    if (opts?.start) qs.set('start', opts.start);
+    if (opts?.end) qs.set('end', opts.end);
+    if (opts?.limit) qs.set('limit', String(opts.limit));
+    const q = qs.toString();
+    return http<
+      Array<{
+        id: string;
+        user_id: string;
+        user_email: string | null;
+        user_name: string | null;
+        provider: string;
+        payment_id: string;
+        mov_id: string | null;
+        external_id: string | null;
+        credits: number;
+        usd_amount: number;
+        status: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'EXPIRED' | 'REFUNDED';
+        confirmed_at: string | null;
+        created_at: string;
+      }>
+    >(`/payments${q ? `?${q}` : ''}`);
+  },
+  paymentsStats: () =>
+    http<{
+      today: { count: number; usd: number; credits: number };
+      last_7d: { count: number; usd: number; credits: number };
+      month: { count: number; usd: number; credits: number };
+      pending: { count: number; usd: number; credits: number };
+      failed_month: { count: number; usd: number; credits: number };
+    }>('/payments/stats'),
+  paymentMark: (id: string, body: { status: string; note?: string }) =>
+    http<{ ok: true }>(`/payments/${id}/mark`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
 };

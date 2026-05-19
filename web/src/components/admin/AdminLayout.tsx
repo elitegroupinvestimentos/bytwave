@@ -11,6 +11,7 @@ import {
   LogOut,
   AlertOctagon,
   Plug,
+  CreditCard,
   Menu,
   X,
 } from 'lucide-react';
@@ -21,6 +22,7 @@ const items = [
   { to: '/admin',              icon: LayoutGrid, label: 'Visão geral' },
   { to: '/admin/users',        icon: Users,      label: 'Usuários' },
   { to: '/admin/transactions', icon: Coins,      label: 'Tokens' },
+  { to: '/admin/payments',     icon: CreditCard, label: 'Pagamentos' },
   { to: '/admin/cycles',       icon: Activity,   label: 'Ciclos' },
   { to: '/admin/packs',        icon: Package,    label: 'Pacotes' },
   { to: '/admin/logs',         icon: ScrollText, label: 'Logs' },

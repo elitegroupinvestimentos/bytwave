@@ -564,3 +564,182 @@ adminRouter.delete(
     res.json({ ok: true });
   }),
 );
+
+// ── Payments admin ─────────────────────────────────────────────────────────
+// Lista todos os intents, com filtros opcionais (status, user search, datas).
+// PATCH /admin/payments/:id/mark muda o status manualmente.
+
+adminRouter.get(
+  '/payments',
+  ah(async (req, res) => {
+    const status = req.query.status as string | undefined;
+    const search = (req.query.search as string | undefined)?.trim();
+    const start = req.query.start as string | undefined;
+    const end = req.query.end as string | undefined;
+    const limit = Math.min(Number(req.query.limit ?? 200), 500);
+
+    let q = supabase
+      .from('payment_intents')
+      .select(
+        'id, user_id, provider, payment_id, mov_id, external_id, credits, usd_amount, status, confirmed_at, created_at, updated_at',
+      )
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (status && ['PENDING', 'CONFIRMED', 'FAILED', 'EXPIRED', 'REFUNDED'].includes(status)) {
+      q = q.eq('status', status);
+    }
+    if (start) q = q.gte('created_at', start);
+    if (end) q = q.lte('created_at', end);
+
+    const { data, error } = await q;
+    if (error) throw error;
+
+    // Junta info do user (email/nome) com 1 query simples.
+    const userIds = Array.from(new Set((data ?? []).map((r: any) => r.user_id)));
+    let users: Array<{ id: string; email: string; name: string | null }> = [];
+    if (userIds.length) {
+      const { data: u } = await supabase
+        .from('users')
+        .select('id, email, name')
+        .in('id', userIds);
+      users = (u as any[]) ?? [];
+    }
+    const byId = new Map(users.map((u) => [u.id, u]));
+    let rows = (data ?? []).map((r: any) => ({
+      ...r,
+      user_email: byId.get(r.user_id)?.email ?? null,
+      user_name: byId.get(r.user_id)?.name ?? null,
+    }));
+    if (search) {
+      const s = search.toLowerCase();
+      rows = rows.filter(
+        (r) =>
+          (r.user_email ?? '').toLowerCase().includes(s) ||
+          (r.user_name ?? '').toLowerCase().includes(s) ||
+          (r.payment_id ?? '').toLowerCase().includes(s),
+      );
+    }
+    res.json(rows);
+  }),
+);
+
+adminRouter.get(
+  '/payments/stats',
+  ah(async (_req, res) => {
+    const now = new Date();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const { data, error } = await supabase
+      .from('payment_intents')
+      .select('credits, usd_amount, status, created_at, confirmed_at')
+      .gte('created_at', startOfMonth.toISOString());
+    if (error) throw error;
+
+    const rows = (data ?? []) as Array<{
+      credits: number;
+      usd_amount: number;
+      status: string;
+      created_at: string;
+      confirmed_at: string | null;
+    }>;
+
+    function sum(filter: (r: typeof rows[number]) => boolean) {
+      const matched = rows.filter(filter);
+      return {
+        count: matched.length,
+        usd: matched.reduce((s, r) => s + Number(r.usd_amount ?? 0), 0),
+        credits: matched.reduce((s, r) => s + Number(r.credits ?? 0), 0),
+      };
+    }
+
+    const confirmedToday = sum(
+      (r) =>
+        r.status === 'CONFIRMED' &&
+        r.confirmed_at != null &&
+        new Date(r.confirmed_at) >= startOfDay,
+    );
+    const confirmed7d = sum(
+      (r) =>
+        r.status === 'CONFIRMED' &&
+        r.confirmed_at != null &&
+        new Date(r.confirmed_at) >= sevenDaysAgo,
+    );
+    const confirmedMonth = sum((r) => r.status === 'CONFIRMED');
+    const pending = sum((r) => r.status === 'PENDING');
+    const failedMonth = sum((r) => r.status === 'FAILED' || r.status === 'EXPIRED');
+
+    res.json({
+      today: confirmedToday,
+      last_7d: confirmed7d,
+      month: confirmedMonth,
+      pending,
+      failed_month: failedMonth,
+    });
+  }),
+);
+
+const markSchema = z.object({
+  status: z.enum(['CONFIRMED', 'REFUNDED', 'FAILED', 'EXPIRED', 'PENDING']),
+  note: z.string().optional(),
+});
+
+adminRouter.patch(
+  '/payments/:id/mark',
+  ah(async (req, res) => {
+    const body = markSchema.parse(req.body);
+    const { data: prev, error: getErr } = await supabase
+      .from('payment_intents')
+      .select('*')
+      .eq('id', req.params.id)
+      .maybeSingle();
+    if (getErr) throw getErr;
+    if (!prev) return res.status(404).json({ error: 'not_found' });
+
+    const patch: any = { status: body.status };
+    if (body.status === 'CONFIRMED' && !prev.confirmed_at) {
+      patch.confirmed_at = new Date().toISOString();
+    }
+
+    const { error } = await supabase
+      .from('payment_intents')
+      .update(patch)
+      .eq('id', req.params.id);
+    if (error) throw error;
+
+    // Se transitar PENDING → CONFIRMED manualmente, credita os tokens.
+    if (prev.status === 'PENDING' && body.status === 'CONFIRMED') {
+      const result = await grantTokens({
+        user_id: prev.user_id,
+        amount: prev.credits,
+        reason: 'pack_purchase',
+        metadata: {
+          kind: 'admin_manual_confirm',
+          payment_id: prev.payment_id,
+          provider: prev.provider,
+          note: body.note ?? null,
+        },
+      });
+      await botLog({
+        level: 'info',
+        scope: 'admin',
+        user_id: prev.user_id,
+        message: `Admin marcou PIX como CONFIRMED manualmente. +${prev.credits} créditos. Saldo: ${result.balance_after}`,
+        data: { payment_id: prev.payment_id, note: body.note },
+      });
+    } else {
+      await botLog({
+        level: 'info',
+        scope: 'admin',
+        user_id: prev.user_id,
+        message: `Admin mudou status pagamento ${prev.payment_id}: ${prev.status} → ${body.status}`,
+        data: { note: body.note },
+      });
+    }
+
+    res.json({ ok: true });
+  }),
+);
