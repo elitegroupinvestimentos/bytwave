@@ -1145,6 +1145,21 @@ router.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof z.ZodError) {
     return res.status(400).json({ error: 'validation', details: err.errors });
   }
+  // Erros da Binance NÃO devem propagar 401/403 (faria o frontend
+  // achar que a sessão expirou e deslogar o user). Remapeia pra 502
+  // (Bad Gateway) com detalhes — é um erro upstream, não de auth.
+  const isBinance =
+    err?.name === 'BinanceApiError' ||
+    err?.constructor?.name === 'BinanceApiError' ||
+    (typeof err?.code === 'number' && err?.code < 0);
+  if (isBinance) {
+    return res.status(502).json({
+      error: 'binance_error',
+      message: err.message ?? 'Erro ao consultar Binance',
+      code: err.code,
+      binance_status: err.status ?? 0,
+    });
+  }
   const status = err.status || 500;
   res.status(status).json({ error: err.message ?? 'internal error', code: err.code });
 });
