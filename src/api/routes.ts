@@ -118,6 +118,17 @@ function requireSelf(getUserId: (req: Request) => string | undefined) {
   };
 }
 
+// Debug: mostra o IP de saída do backend (pra debugar bloqueios geográficos).
+router.get('/debug/egress-ip', async (_req, res) => {
+  try {
+    const { default: axios } = await import('axios');
+    const r = await axios.get('https://ifconfig.me/all.json', { timeout: 5000 });
+    res.json(r.data);
+  } catch (err: any) {
+    res.json({ error: err?.message ?? 'failed' });
+  }
+});
+
 // ── meta ────────────────────────────────────────────────────────────────────
 router.get('/health', (_req, res) => {
   res.json({ ok: true, mode: env.BINANCE_MODE });
