@@ -1,27 +1,28 @@
-import { env } from '../../config/env';
 import { BinanceFuturesClient } from './client';
-import { getDecryptedKeys } from '../supabase/service';
+import { getAnyKeysForUser } from '../supabase/service';
 
 // Cache simples por usuário (evita decriptar a cada loop).
 const cache = new Map<string, BinanceFuturesClient>();
 
+// Pega o modo (testnet/production) do que o próprio usuário cadastrou,
+// não da env do backend. Assim cada user pode escolher o modo dele.
 export async function getBinanceClient(user_id: string): Promise<BinanceFuturesClient> {
-  const cacheKey = `${user_id}:${env.BINANCE_MODE}`;
-  const cached = cache.get(cacheKey);
+  const cached = cache.get(user_id);
   if (cached) return cached;
 
-  const creds = await getDecryptedKeys(user_id, env.BINANCE_MODE);
+  const creds = await getAnyKeysForUser(user_id);
   if (!creds) {
-    throw new Error(
-      `API keys da Binance (${env.BINANCE_MODE}) não cadastradas para o usuário ${user_id}.`,
-    );
+    throw new Error(`API keys da Binance não cadastradas para o usuário ${user_id}.`);
   }
 
-  const client = new BinanceFuturesClient(env.BINANCE_MODE, creds);
-  cache.set(cacheKey, client);
+  const client = new BinanceFuturesClient(creds.mode, {
+    apiKey: creds.apiKey,
+    apiSecret: creds.apiSecret,
+  });
+  cache.set(user_id, client);
   return client;
 }
 
 export function invalidateBinanceClient(user_id: string) {
-  cache.delete(`${user_id}:${env.BINANCE_MODE}`);
+  cache.delete(user_id);
 }

@@ -49,6 +49,7 @@ export default function Config() {
   // Binance keys form
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
+  const [binMode, setBinMode] = useState<'testnet' | 'production'>('production');
   const [showKey, setShowKey] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
   const [savingKeys, setSavingKeys] = useState(false);
@@ -168,7 +169,7 @@ export default function Config() {
     try {
       await api.saveBinanceKeys({
         user_id: userId,
-        mode: 'testnet',
+        mode: binMode,
         api_key: apiKey,
         api_secret: apiSecret,
       });
@@ -385,6 +386,43 @@ export default function Config() {
               ⚠️ Suas chaves são criptografadas em AES-256-GCM antes de ir para o banco.
             </div>
           )}
+
+          {/* Toggle modo Binance */}
+          <div>
+            <label className="block text-[10px] font-display font-semibold tracking-[0.2em] uppercase text-muted-foreground mb-1.5">
+              Modo Binance
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setBinMode('testnet')}
+                className={`rounded-xl border px-3 py-2.5 text-sm transition-colors ${
+                  binMode === 'testnet'
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border bg-secondary/20 text-muted-foreground hover:border-primary/40'
+                }`}
+              >
+                <div className="font-semibold">Modo demo</div>
+                <div className="text-[10px] opacity-70 mt-0.5">testnet · sem dinheiro real</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setBinMode('production')}
+                className={`rounded-xl border px-3 py-2.5 text-sm transition-colors ${
+                  binMode === 'production'
+                    ? 'border-red-500/60 bg-red-500/10 text-red-300'
+                    : 'border-border bg-secondary/20 text-muted-foreground hover:border-red-500/40'
+                }`}
+              >
+                <div className="font-semibold">Produção</div>
+                <div className="text-[10px] opacity-70 mt-0.5">conta real · dinheiro real</div>
+              </button>
+            </div>
+            <p className="text-[10px] text-muted-foreground/70 mt-2">
+              O modo define qual endpoint da Binance será usado. Suas chaves precisam ser geradas
+              no mesmo ambiente.
+            </p>
+          </div>
 
           <div>
             <label className="block text-[10px] font-display font-semibold tracking-[0.2em] uppercase text-muted-foreground mb-1.5">

@@ -108,6 +108,27 @@ export async function getDecryptedKeys(user_id: string, mode: Mode) {
   };
 }
 
+// Pega QUALQUER chave do user (a mais recente), independente do mode.
+// Útil pra factory que não conhece o mode preferido — escolhe o que o
+// próprio usuário cadastrou por último.
+export async function getAnyKeysForUser(user_id: string) {
+  const { data, error } = await supabase
+    .from('binance_keys')
+    .select('*')
+    .eq('user_id', user_id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const row = data as BinanceKeyRow;
+  return {
+    mode: row.mode as Mode,
+    apiKey: decrypt(row.api_key_enc),
+    apiSecret: decrypt(row.api_secret_enc),
+  };
+}
+
 // ── Strategy config ───────────────────────────────────────────────────────────
 export async function upsertStrategyConfig(cfg: Omit<StrategyConfig, 'id' | 'status' | 'created_at' | 'updated_at'>) {
   const { data, error } = await supabase
